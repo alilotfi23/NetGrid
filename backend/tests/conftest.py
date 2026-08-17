@@ -6,8 +6,26 @@ import app.models  # noqa: F401  # register every model on Base.metadata
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.rate_limit import limiter as app_limiter
+from app.core.redis import get_redis
 from app.main import create_app
 from app.models.base import Base
+
+
+async def _clear_rbac_cache() -> None:
+    """Drop stale rbac:perms:* keys.
+
+    Postgres sequences are not reset by drop_all/create_all, so admin ids are
+    reused across pytest runs — a stale permission cache from a previous run
+    (TTL 60s) would otherwise serve an old permission set to a fresh test.
+    """
+    redis = get_redis()
+    try:
+        async for key in redis.scan_iter("rbac:perms:*"):
+            await redis.delete(key)
+    except Exception:
+        pass
+    finally:
+        await redis.aclose()
 
 
 @pytest_asyncio.fixture
@@ -25,6 +43,7 @@ async def session(engine):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+    await _clear_rbac_cache()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         yield session

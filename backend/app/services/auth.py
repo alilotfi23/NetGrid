@@ -15,6 +15,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.rbac import Admin
+from app.services.rbac import get_permission_state
 
 BLACKLIST_KEY = "token:blacklist:{}"
 
@@ -32,8 +33,9 @@ async def authenticate_admin(session: AsyncSession, username: str, password: str
     return admin
 
 
-def build_token_pair(admin: Admin) -> dict[str, str]:
-    access = create_access_token(str(admin.id))
+async def build_token_pair(session: AsyncSession, admin: Admin) -> dict[str, str]:
+    state = await get_permission_state(session, admin.id)
+    access = create_access_token(str(admin.id), perm_version=state.version)
     refresh, _ = create_refresh_token(str(admin.id))
     return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
 
@@ -71,7 +73,7 @@ async def refresh_tokens(session: AsyncSession, refresh_token: str) -> dict[str,
     if admin is None or not admin.is_active:
         raise UnauthorizedError("Admin no longer active")
     await _revoke_jti(jti, _jti_ttl_seconds(payload))
-    return build_token_pair(admin)
+    return await build_token_pair(session, admin)
 
 
 async def logout(refresh_token: str) -> None:

@@ -39,7 +39,7 @@ async def login(
 ) -> LoginResponse:
     """POST /api/v1/auth/login — no permission required (auth endpoint)."""
     admin = await auth_service.authenticate_admin(session, payload.username, payload.password)
-    pair = auth_service.build_token_pair(admin)
+    pair = await auth_service.build_token_pair(session, admin)
     return LoginResponse(admin=AdminOut.model_validate(admin), **pair)
 
 
