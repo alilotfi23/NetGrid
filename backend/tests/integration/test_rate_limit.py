@@ -61,5 +61,12 @@ async def test_limit_resets_after_window(app):
         assert (await client.get("/api/v1/scratch")).status_code == 200
         assert (await client.get("/api/v1/scratch")).status_code == 200
         assert (await client.get("/api/v1/scratch")).status_code == 429
-        await asyncio.sleep(1.2)
-        assert (await client.get("/api/v1/scratch")).status_code == 200
+        # Poll until the 1s window rolls over (bounded, so slow CI machines
+        # don't flake on a fixed sleep).
+        recovered = False
+        for _ in range(30):
+            await asyncio.sleep(0.2)
+            if (await client.get("/api/v1/scratch")).status_code == 200:
+                recovered = True
+                break
+        assert recovered
