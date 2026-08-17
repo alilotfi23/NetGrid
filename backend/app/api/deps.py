@@ -1,5 +1,6 @@
 """Shared FastAPI dependencies for authenticated endpoints."""
 
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import Annotated, Any
 
@@ -42,7 +43,7 @@ async def get_current_admin(
     return CurrentAdmin(admin=admin, payload=payload)
 
 
-def require_permission(permission: str):
+def require_permission(permission: str) -> Callable[..., Coroutine[Any, Any, Admin]]:
     """Dependency factory: authentication + permission check.
 
     Rejects a token whose perm_version no longer matches the admin's current
