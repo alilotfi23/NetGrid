@@ -4,7 +4,7 @@ This file gives Claude Code the context it needs to work in this repository. Rea
 
 ## Project Overview
 
-**Name:** (TODO: pick a project name, e.g. "NetGrid")
+**Name:** NetGrid
 **Goal:** A modern ISP subscriber management and billing platform, inspired by IBSng (github.com/pouyadarabi/IBSng), rebuilt from scratch for a university capstone project.
 
 This is **not** a port of IBSng's PHP/Smarty code. It is a fresh system with the same functional scope:
@@ -40,6 +40,16 @@ We do keep our own `subscribers` table (profile info, status, billing metadata) 
 
 - **Admin users**: staff who log into the dashboard. JWT-based auth, governed by RBAC (see below).
 - **Subscriber accounts**: end users authenticated by FreeRADIUS against routers/NAS devices (PAP/CHAP/MSCHAPv2). Never routed through the admin auth/RBAC stack.
+
+### Pinned decisions
+
+- API routes live under `/api/v1` and every error responds `{"error": {"code": "...", "message": "..."}}` (see `app/core/exceptions.py` + `app/core/errors.py`); success responses are plain data, lists use `Page[T]` (`app/core/pagination.py`).
+- Layering: routers are thin (parse/validate → call services); all DB access lives in services; services never import from `api/`.
+- NAS coupling is direct: `nas_devices` writes the FreeRADIUS `nas` table in the same transaction, with shared secrets Fernet-encrypted at rest (`FERNET_KEY`).
+- CoA/session disconnect is sent directly from FastAPI with `pyrad` as an RFC 5176 Disconnect-Request — a client library call, not a bridge.
+- Admin password hashing is pinned to `passlib` `CryptContext(schemes=["argon2"])`.
+- Tests run against real Postgres (dedicated `netgrid_test` database), never SQLite.
+- Hardening indexes: unique `radcheck(username, attribute)`; `radacct(username)`, `radacct(acctstoptime)`, `radacct(framedipaddress)` (in `freeradius/raddb/mods-config/sql/main/postgresql/indexes.sql`).
 
 ## RBAC (Role-Based Access Control)
 
@@ -130,6 +140,7 @@ Two separate concerns — do not conflate them:
 - `nas_devices` (router inventory, shared secrets — mirrors FreeRADIUS `nas` table)
 - `radcheck`, `radreply`, `radacct`, `radgroupcheck`, `radgroupreply`, `radusergroup` — **standard FreeRADIUS schema table/column names, do not rename**
 - `invoices`, `payments`
+- `audit_log` (admin_id, action, resource, resource_id, metadata jsonb, created_at)
 
 When touching anything under `/freeradius`, preserve FreeRADIUS's expected table/column names exactly as documented in `raddb/mods-config/sql/main/postgresql/schema.sql`.
 
@@ -182,7 +193,7 @@ This is the build order. **Work top to bottom.** Do not start a phase until the 
 
 At the start of a session, scan this list top-down and resume at the first unchecked item. Check off an item in the same commit that completes it, so this file always reflects real state, not intent.
 
-- [ ] **Phase 0 — Repo & environment scaffolding**
+- [x] **Phase 0 — Repo & environment scaffolding**
   - Repository structure as laid out above (`/backend`, `/frontend`, `/freeradius`, `/alembic`, `/tests`)
   - `docker-compose.yml` wiring postgres, redis, freeradius, fastapi, frontend
   - `.env.example` with every variable the app will need (DB creds, Redis URL, JWT secret, RADIUS shared secret placeholder)
@@ -190,7 +201,7 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Linter/formatter/type-checker config: `ruff`, `mypy` (backend); ESLint/Prettier (frontend) — pin the toolchain, don't leave it implicit
   - Empty FastAPI app boots, empty Next.js app boots, `docker compose up` brings up all services
 
-- [ ] **Phase 1 — Core data model & migrations**
+- [x] **Phase 1 — Core data model & migrations**
   - SQLAlchemy models for `admins`, `roles`, `permissions`, `role_permissions`, `admin_roles`
   - SQLAlchemy models for `subscribers`, `plans`, `nas_devices`, `invoices`, `payments`
   - FreeRADIUS standard schema tables (`radcheck`, `radreply`, `radacct`, `radgroupcheck`, `radgroupreply`, `radusergroup`) created via the official FreeRADIUS `schema.sql`, not hand-modeled in SQLAlchemy unless the app needs to query them (if so, map read-only/exact-name)
@@ -212,7 +223,7 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Apply `require_permission` to every route from this point forward — no new endpoint after this phase should ship without an explicit permission check
   - Full unit + integration coverage (permission resolution, caching, access denied/allowed per role, revocation takes effect)
 
-- [ ] **Phase 4 — API conventions layer**
+- [x] **Phase 4 — API conventions layer**
   - Resolve the open "High" items from Prioritized Recommendations that affect every future endpoint: response/error envelope, `/api/v1/...` versioning, layering rules (router → service → session)
   - `app/core/exceptions.py` + FastAPI exception handlers implementing the pinned error shape
   - This phase exists so every resource built afterward is consistent — do not build Subscribers/Plans/etc. before this is settled
@@ -269,16 +280,7 @@ These came out of a senior-level architecture/code audit of this file before imp
 
 | Priority | Recommendation | Why it matters | Suggested implementation |
 |---|---|---|---|
-| High | Define the FastAPI internal layering contract (router → service → session boundary rules) | Prevents inconsistent fat-router/thin-router code across sections written at different times | Add a "Layering Rules" subsection: routers never call `session.execute` directly; all DB access goes through services; services never import from `api/` |
-| High | Pin an API response/error envelope and versioning convention | Without this, each router (especially agent-generated) will invent its own shape | e.g. `/api/v1/...`, errors as `{"error": {"code": "SUBSCRIBER_NOT_FOUND", "message": "..."}}`, define via a shared `exceptions.py` + FastAPI exception handlers |
-| High | Decide the `nas_devices` ↔ `nas` sync strategy explicitly (same rigor as subscribers/radcheck) | This is the same fragility class already solved for subscribers — leaving it unsolved here reintroduces exactly the risk the direct-coupling decision was meant to avoid | State it as direct coupling too, or justify why NAS is different |
-| High | Decide and document the CoA/session-disconnect mechanism | `sessions:disconnect` implies a RADIUS packet or DB signal — currently underspecified and risks violating the "no RPC bridge" rule inadvertently | Use `pyrad` to send RFC 5176 Disconnect-Request directly from FastAPI (still not a "bridge," just a client library call); document as such |
-| High | Require encryption at rest for `nas_devices` shared secrets | Plaintext RADIUS shared secrets are a critical secret; compromise lets a rogue NAS impersonate a router | Use `pgcrypto` (`pgp_sym_encrypt`) or app-level Fernet encryption before insert |
-| Medium | Add an `audit_log` table for RBAC-sensitive and billing-sensitive actions | Billing/AAA systems need an accountability trail; currently absent from the core data model | `audit_log(id, admin_id, action, resource, resource_id, metadata jsonb, created_at)` |
-| Medium | Pin the password hashing scheme explicitly | "passlib" names a library, not an algorithm; ambiguity invites weak defaults | `passlib.context.CryptContext(schemes=["argon2"])` |
 | Medium | Require CI before the second backend feature merges | "Tests mandatory" has no teeth without enforcement | Minimal GitHub Actions workflow: `pytest` + `ruff` + `mypy` on push |
-| Medium | Specify test DB as real Postgres (Docker/testcontainers), not SQLite | Postgres-specific types/behavior (especially via SQLAlchemy 2.0 async) will silently diverge under SQLite | `pytest` fixture spinning up a Postgres testcontainer or docker-compose test service |
-| Low | Add indexing guidance for `radacct` and a uniqueness constraint for `radcheck.username` | `radacct` will be by far the highest-write-volume table | Document expected indexes in the schema section before the first migration |
 | Low | Add a human-facing `README.md` separate from `CLAUDE.md` | Agent context is not a substitute for a human onboarding doc | Standard quickstart: prerequisites, `.env.example`, `docker compose up`, migration command |
 | Low | Name a linter/formatter/type-checker toolchain explicitly | "Run linters" is stated but nothing is named | `ruff` (lint + format) + `mypy --strict` on `app/` |
 
