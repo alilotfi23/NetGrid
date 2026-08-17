@@ -1,0 +1,77 @@
+name: netgrid
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: netgrid
+      POSTGRES_PASSWORD: netgrid
+      POSTGRES_DB: netgrid
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./freeradius/raddb/mods-config/sql/main/postgresql/schema.sql:/docker-entrypoint-initdb.d/10-radius-schema.sql:ro
+      - ./freeradius/raddb/mods-config/sql/main/postgresql/indexes.sql:/docker-entrypoint-initdb.d/20-radius-indexes.sql:ro
+      - ./docker/postgres/30-create-test-db.sql:/docker-entrypoint-initdb.d/30-create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netgrid -d netgrid"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [netgrid]
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [netgrid]
+
+  freeradius:
+    build: ./freeradius
+    ports:
+      - "1812:1812/udp"
+      - "1813:1813/udp"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [netgrid]
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://netgrid:netgrid@postgres:5432/netgrid
+      REDIS_URL: redis://redis:6379/0
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [netgrid]
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks: [netgrid]
+
+networks:
+  netgrid:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  pgdata:
