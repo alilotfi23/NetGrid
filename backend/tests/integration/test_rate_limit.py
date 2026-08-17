@@ -43,11 +43,11 @@ async def test_rate_limit_is_per_ip(app, session):
         transport=ASGITransport(app=app, client=("10.2.2.2", 2)), base_url="http://test"
     )
     async with client_a, client_b:
+        # A exhausts its own 5/min budget: 5 rejected attempts, then a 429.
         for _ in range(5):
             assert (await client_a.post("/api/v1/auth/login", json=LOGIN)).status_code == 401
-            assert (await client_b.post("/api/v1/auth/login", json=LOGIN)).status_code == 401
-        # 6th request from A is blocked; B is unaffected
         assert (await client_a.post("/api/v1/auth/login", json=LOGIN)).status_code == 429
+        # B is a different IP: untouched by A's lockout, still gets a normal 401.
         assert (await client_b.post("/api/v1/auth/login", json=LOGIN)).status_code == 401
 
 
