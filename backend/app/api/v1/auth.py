@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_permission
 from app.core.db import get_session
+from app.core.exceptions import UnauthorizedError
 from app.core.rate_limit import LIMITS, limiter
 from app.models.rbac import Admin
 from app.schemas.auth import (
@@ -22,9 +23,15 @@ from app.schemas.auth import (
     RefreshRequest,
     TokenPair,
 )
+from app.services import audit as audit_service
 from app.services import auth as auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _client_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
+
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
@@ -38,8 +45,13 @@ async def login(
     session: SessionDep,
 ) -> LoginResponse:
     """POST /api/v1/auth/login — no permission required (auth endpoint)."""
-    admin = await auth_service.authenticate_admin(session, payload.username, payload.password)
+    try:
+        admin = await auth_service.authenticate_admin(session, payload.username, payload.password)
+    except UnauthorizedError:
+        await audit_service.record_login_failure(session, payload.username, _client_ip(request))
+        raise
     pair = await auth_service.build_token_pair(session, admin)
+    await audit_service.record_login_success(session, admin, _client_ip(request))
     return LoginResponse(admin=AdminOut.model_validate(admin), **pair)
 
 
