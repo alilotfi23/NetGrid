@@ -135,6 +135,9 @@ npm run dev                  # http://localhost:3000
 - Every schema change ships with an Alembic migration — never edit the schema by hand.
 - The FreeRADIUS `rad*` tables are owned by Postgres initdb and are **never touched by
   Alembic**; don't rename or restructure them.
+- The `seed super admin` migration creates a dev bootstrap account with the
+  `super_admin` role and all permissions — **change the password after first login**:
+  `superadmin` / `netgrid-admin`.
 
 ## CI
 
