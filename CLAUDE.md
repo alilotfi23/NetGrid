@@ -280,7 +280,6 @@ These came out of a senior-level architecture/code audit of this file before imp
 
 | Priority | Recommendation | Why it matters | Suggested implementation |
 |---|---|---|---|
-| Medium | Require CI before the second backend feature merges | "Tests mandatory" has no teeth without enforcement | Minimal GitHub Actions workflow: `pytest` + `ruff` + `mypy` on push |
 | Low | Add a human-facing `README.md` separate from `CLAUDE.md` | Agent context is not a substitute for a human onboarding doc | Standard quickstart: prerequisites, `.env.example`, `docker compose up`, migration command |
 | Low | Name a linter/formatter/type-checker toolchain explicitly | "Run linters" is stated but nothing is named | `ruff` (lint + format) + `mypy --strict` on `app/` |
 

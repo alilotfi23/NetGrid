@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — ruff, mypy, pytest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same initdb scripts as local `docker compose up`: radius schema +
+      # hardening indexes + the netgrid_test database the test suite runs
+      # against (never SQLite — see CLAUDE.md pinned decisions).
+      - name: Start Postgres + Redis (compose)
+        working-directory: .
+        run: docker compose up -d --wait postgres redis
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend
+        run: pip install -e ".[dev]"
+
+      - name: Ruff lint
+        run: ruff check app tests
+
+      - name: Ruff format check
+        run: ruff format --check app tests
+
+      - name: Mypy typecheck
+        run: mypy app
+
+      # RADIUS integration tests run in the separate, slower `radius` job.
+      - name: Pytest
+        run: pytest -q --ignore=tests/radius
+
+  radius:
+    name: RADIUS integration (slow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Postgres + FreeRADIUS (compose)
+        run: docker compose up -d --wait postgres freeradius
+
+      # Scripted radtest check proving the full path: RADIUS packet ->
+      # rlm_sql -> postgres -> radpostauth write back. radtest exits non-zero
+      # on Access-Reject, which is the expected outcome for an unknown user.
+      - name: Smoke — auth round-trip through rlm_sql to Postgres
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            OUT="$(docker compose exec -T freeradius radtest baduser badpass 127.0.0.1 0 testing123 2>&1 || true)"
+            if echo "$OUT" | grep -q "Received"; then
+              break
+            fi
+            sleep 2
+          done
+          echo "$OUT"
+          echo "$OUT" | grep -q "Access-Reject"
+          ROWS="$(docker compose exec -T postgres psql -U netgrid -d netgrid -tAc \
+            "SELECT count(*) FROM radpostauth WHERE username='baduser' AND reply='Access-Reject'")"
+          echo "radpostauth rows for baduser: $ROWS"
+          test "$ROWS" -ge 1
+
+      # Phase 11 adds scripted radtest/radclient pytest checks here; until
+      # then the smoke step above covers the RADIUS -> DB path.
+      - name: Scripted RADIUS tests (tests/radius)
+        run: |
+          if ls backend/tests/radius/test_*.py >/dev/null 2>&1; then
+            cd backend
+            pip install -e ".[dev]"
+            pytest tests/radius -q
+          else
+            echo "No pytest-based RADIUS tests yet (planned in Phase 11); skipping."
+          fi
