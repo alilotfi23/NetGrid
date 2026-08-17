@@ -1,5 +1,5 @@
 from app.core.security import hash_password
-from app.models.rbac import Admin
+from app.models.rbac import Admin, Permission, Role
 
 
 async def _seed_admin(session, username="root", password="secret123") -> Admin:
@@ -9,6 +9,10 @@ async def _seed_admin(session, username="root", password="secret123") -> Admin:
         password_hash=hash_password(password),
         is_active=True,
     )
+    # /auth/me is gated behind require_permission("admins:read") since Plan 3.
+    role = Role(name=f"role_{username}")
+    role.permissions = [Permission(code="admins:read")]
+    admin.roles.append(role)
     session.add(admin)
     await session.commit()
     return admin

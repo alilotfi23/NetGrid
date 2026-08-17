@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_admin
+from app.api.deps import require_permission
 from app.core.db import get_session
 from app.core.rate_limit import LIMITS, limiter
 from app.models.rbac import Admin
@@ -65,7 +65,7 @@ async def logout(request: Request, response: Response, payload: LogoutRequest) -
 async def me(
     request: Request,
     response: Response,
-    admin: Annotated[Admin, Depends(get_current_admin)],
+    admin: Annotated[Admin, Depends(require_permission("admins:read"))],
 ) -> AdminOut:
-    """GET /api/v1/auth/me — requires a valid access token (auth-only until Plan 3)."""
+    """GET /api/v1/auth/me — requires the admins:read permission (via require_permission)."""
     return AdminOut.model_validate(admin)
