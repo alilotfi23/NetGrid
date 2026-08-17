@@ -66,7 +66,10 @@ Applies to **admin users only** — subscriber auth is handled entirely by FreeR
   - `invoices:read`, `invoices:write`
   - `nas_devices:read`, `nas_devices:write`
   - `sessions:read`, `sessions:disconnect` (CoA)
+  - `admins:read` (list admins and their role assignments)
   - `admins:manage` (create/edit other admins and role assignments — restrict to `super_admin`)
+  - `roles:read` (view roles and the permission catalog)
+  - `roles:manage` (create/edit roles and assign permissions to them)
 - `role_permissions` — many-to-many, roles → permissions
 - `admin_roles` — many-to-many, admins → roles (support multiple roles per admin)
 
@@ -78,6 +81,8 @@ Applies to **admin users only** — subscriber auth is handled entirely by FreeR
 - Exception: the Phase 2 `/api/v1/auth/*` endpoints (login/refresh/logout/me) are the authentication layer itself; Plan 3 adds `require_permission` to `/auth/me` and all future endpoints.
 - Seed a default `super_admin` role with all permissions and a minimal `auditor` role with only `*:read` permissions as reference implementations; add others as features land.
 - Write RBAC as its own module (`app/core/rbac.py` or `app/security/rbac.py`), not inlined per-router.
+- Admin/role management endpoints (`/api/v1/admins`, `/api/v1/roles`, `/api/v1/permissions`) invalidate the affected admins' permission cache on every role/permission change (`invalidate_admin_permissions`), so revocation takes effect immediately, not just at the 60s TTL.
+- Self-protection invariants enforced in `app/services/admins.py`: an admin cannot deactivate themselves, cannot change their own roles, and cannot edit a role they hold in a way that would strip their own `admins:manage` access — the classic lockout paths.
 
 ## Rate Limiting
 
@@ -218,12 +223,13 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Auth rate limiting (login: 5/min/IP, see Rate Limiting section)
   - Full unit + integration coverage per the Testing table (token creation/validation, login flow, refresh, invalid credentials, lockout)
 
-- [ ] **Phase 3 — RBAC**
+- [x] **Phase 3 — RBAC**
   - `app/core/rbac.py` (or `security/rbac.py`) module: role/permission resolution, `require_permission(...)` dependency
   - JWT permission-version embedding or Redis-cached permission set, with the ≤60s revocation TTL
   - Seed `super_admin` (all permissions) and `auditor` (`*:read`) roles
   - Apply `require_permission` to every route from this point forward — no new endpoint after this phase should ship without an explicit permission check
   - Full unit + integration coverage (permission resolution, caching, access denied/allowed per role, revocation takes effect)
+  - Admin/role CRUD endpoints (`/api/v1/admins`, `/api/v1/roles`, `/api/v1/permissions`) with cache invalidation on every role/permission change
 
 - [x] **Phase 4 — API conventions layer**
   - Resolve the open "High" items from Prioritized Recommendations that affect every future endpoint: response/error envelope, `/api/v1/...` versioning, layering rules (router → service → session)

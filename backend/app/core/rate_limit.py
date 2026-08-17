@@ -30,6 +30,9 @@ LIMITS = {
     "refresh": "10/minute",
     "logout": "10/minute",
     "me": "60/minute",
+    # Phase 3 management endpoints: reads loose, writes moderate.
+    "admin_read": "60/minute",
+    "admin_write": "20/minute",
 }
 
 
