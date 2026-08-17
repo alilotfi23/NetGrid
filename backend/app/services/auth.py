@@ -1,6 +1,7 @@
 """Admin authentication service: credential checks, token issuance, revocation."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,7 +38,7 @@ def build_token_pair(admin: Admin) -> dict[str, str]:
     return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
 
 
-def _jti_ttl_seconds(payload: dict) -> int:
+def _jti_ttl_seconds(payload: dict[str, Any]) -> int:
     """Remaining life of a token in seconds, min 1 (PyJWT decodes exp to int)."""
     exp = int(payload["exp"])
     now = int(datetime.now(UTC).timestamp())
