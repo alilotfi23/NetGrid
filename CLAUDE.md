@@ -48,6 +48,7 @@ We do keep our own `subscribers` table (profile info, status, billing metadata) 
 - NAS coupling is direct: `nas_devices` writes the FreeRADIUS `nas` table in the same transaction, with shared secrets Fernet-encrypted at rest (`FERNET_KEY`).
 - CoA/session disconnect is sent directly from FastAPI with `pyrad` as an RFC 5176 Disconnect-Request — a client library call, not a bridge.
 - Admin password hashing is pinned to `passlib` `CryptContext(schemes=["argon2"])`.
+- Admin auth: JWT access (15 min) + refresh (7 day) tokens with `sub`/`type`/`jti` claims (HS256); refresh tokens rotate and logout revokes via a Redis jti blacklist (`token:blacklist:<jti>`, TTL = remaining token life); login rate-limited 5/min/IP via slowapi, config centralized in `app/core/rate_limit.py`.
 - Tests run against real Postgres (dedicated `netgrid_test` database), never SQLite.
 - Hardening indexes: unique `radcheck(username, attribute)`; `radacct(username)`, `radacct(acctstoptime)`, `radacct(framedipaddress)` (in `freeradius/raddb/mods-config/sql/main/postgresql/indexes.sql`).
 
@@ -74,6 +75,7 @@ Applies to **admin users only** — subscriber auth is handled entirely by FreeR
 - Implement as a FastAPI dependency, e.g. `require_permission("subscribers:write")`, applied per-route — never enforce RBAC only in the frontend.
 - Resolve an admin's effective permission set at login, embed a permission-version or role hash in the JWT (or cache in Redis keyed by admin id), and invalidate/refresh on role change — don't require a DB hit on every request, but never let a revoked permission stay valid longer than a short cache TTL (e.g. 60s).
 - Every new admin-facing endpoint must declare its required permission(s) explicitly. No endpoint should be reachable by "any authenticated admin" by default — require an explicit permission check.
+- Exception: the Phase 2 `/api/v1/auth/*` endpoints (login/refresh/logout/me) are the authentication layer itself; Plan 3 adds `require_permission` to `/auth/me` and all future endpoints.
 - Seed a default `super_admin` role with all permissions and a minimal `auditor` role with only `*:read` permissions as reference implementations; add others as features land.
 - Write RBAC as its own module (`app/core/rbac.py` or `app/security/rbac.py`), not inlined per-router.
 
@@ -209,7 +211,7 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Initial Alembic migration; verify `alembic upgrade head` / `downgrade` both work cleanly
   - Unit tests for model constraints (uniqueness, required fields)
 
-- [ ] **Phase 2 — Admin auth (JWT)**
+- [x] **Phase 2 — Admin auth (JWT)**
   - Password hashing (pin the scheme — see Prioritized Recommendations, e.g. argon2)
   - Login endpoint issuing access + refresh JWTs
   - Refresh endpoint, logout/revocation strategy
