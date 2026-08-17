@@ -1,0 +1,46 @@
+sql {
+	driver = "rlm_sql_postgresql"
+	dialect = "postgresql"
+
+	server = "postgres"
+	port = 5432
+	login = "netgrid"
+	password = "netgrid"
+	radius_db = "netgrid"
+
+	acct_table1 = "radacct"
+	acct_table2 = "radacct"
+	postauth_table = "radpostauth"
+	authcheck_table = "radcheck"
+	authreply_table = "radreply"
+	groupcheck_table = "radgroupcheck"
+	groupreply_table = "radgroupreply"
+	usergroup_table = "radusergroup"
+
+	delete_stale_sessions = yes
+
+	pool {
+		start = 5
+		min = 3
+		max = 10
+		spare = 3
+		uses = 0
+		retry_delay = 30
+		lifetime = 0
+		idle_timeout = 60
+	}
+
+	read_clients = yes
+	client_table = "nas"
+
+	read_groups = yes
+	read_profiles = yes
+
+	sqltrace = no
+
+	# Group attribute for the default instance, used by the group
+	# check/reply queries in queries.conf (${group_attribute}).
+	group_attribute = "SQL-Group"
+
+	$INCLUDE /etc/raddb/mods-config/sql/main/${dialect}/queries.conf
+}
