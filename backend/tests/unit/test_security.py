@@ -30,6 +30,18 @@ def test_access_token_roundtrip():
     assert payload["exp"]
 
 
+def test_access_token_embeds_perm_version():
+    token = security.create_access_token("7", perm_version="abc123")
+    payload = security.decode_token(token, expected_type="access")
+    assert payload["perm_version"] == "abc123"
+
+
+def test_access_token_without_perm_version():
+    token = security.create_access_token("7")
+    payload = security.decode_token(token, expected_type="access")
+    assert "perm_version" not in payload
+
+
 def test_refresh_token_roundtrip_returns_jti():
     token, jti = security.create_refresh_token("7")
     payload = security.decode_token(token, expected_type="refresh")

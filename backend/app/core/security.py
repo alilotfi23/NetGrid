@@ -28,7 +28,9 @@ def verify_password(plain: str, hashed: str) -> bool:
     return result
 
 
-def _encode(subject: str, token_type: str, ttl: timedelta) -> tuple[str, str]:
+def _encode(
+    subject: str, token_type: str, ttl: timedelta, perm_version: str | None = None
+) -> tuple[str, str]:
     """Encode a JWT; returns (token, jti) so logout/rotation can revoke it."""
     settings = get_settings()
     jti = uuid4().hex
@@ -40,13 +42,15 @@ def _encode(subject: str, token_type: str, ttl: timedelta) -> tuple[str, str]:
         "iat": now,
         "exp": now + ttl,
     }
+    if perm_version is not None:
+        payload["perm_version"] = perm_version
     token = jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
     return token, jti
 
 
-def create_access_token(subject: str) -> str:
+def create_access_token(subject: str, perm_version: str | None = None) -> str:
     ttl = timedelta(minutes=get_settings().jwt_access_ttl_minutes)
-    token, _ = _encode(subject, TOKEN_TYPE_ACCESS, ttl)
+    token, _ = _encode(subject, TOKEN_TYPE_ACCESS, ttl, perm_version=perm_version)
     return token
 
 
