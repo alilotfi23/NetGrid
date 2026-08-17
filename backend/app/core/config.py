@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     test_database_url: str = "postgresql+asyncpg://netgrid:netgrid@localhost:5432/netgrid_test"
     redis_url: str = "redis://localhost:6379/0"
 
-    jwt_secret: str = "change-me"
+    jwt_secret: str = "change-me-generate-a-long-random-string"
     jwt_access_ttl_minutes: int = 15
     jwt_refresh_ttl_days: int = 7
 
