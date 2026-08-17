@@ -5,17 +5,19 @@ Revises:
 Create Date: 2026-08-17 21:03:06.647582
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "a28cbe094ce8"
-down_revision: Union[str, Sequence[str], None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -93,7 +95,10 @@ def upgrade() -> None:
         sa.Column("admin_id", sa.Integer(), nullable=False),
         sa.Column("role_id", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(
-            ["admin_id"], ["admins.id"], name=op.f("fk_admin_roles_admin_id_admins"), ondelete="CASCADE"
+            ["admin_id"],
+            ["admins.id"],
+            name=op.f("fk_admin_roles_admin_id_admins"),
+            ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["role_id"], ["roles.id"], name=op.f("fk_admin_roles_role_id_roles"), ondelete="CASCADE"
@@ -110,7 +115,10 @@ def upgrade() -> None:
         sa.Column("metadata_", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
         sa.Column("created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(
-            ["admin_id"], ["admins.id"], name=op.f("fk_audit_log_admin_id_admins"), ondelete="SET NULL"
+            ["admin_id"],
+            ["admins.id"],
+            name=op.f("fk_audit_log_admin_id_admins"),
+            ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_audit_log")),
     )
@@ -125,7 +133,10 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
-            ["role_id"], ["roles.id"], name=op.f("fk_role_permissions_role_id_roles"), ondelete="CASCADE"
+            ["role_id"],
+            ["roles.id"],
+            name=op.f("fk_role_permissions_role_id_roles"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("role_id", "permission_id", name=op.f("pk_role_permissions")),
     )
@@ -142,7 +153,10 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(
-            ["plan_id"], ["plans.id"], name=op.f("fk_subscribers_plan_id_plans"), ondelete="SET NULL"
+            ["plan_id"],
+            ["plans.id"],
+            name=op.f("fk_subscribers_plan_id_plans"),
+            ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_subscribers")),
     )
@@ -179,7 +193,10 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=16), nullable=False),
         sa.Column("created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False),
         sa.ForeignKeyConstraint(
-            ["invoice_id"], ["invoices.id"], name=op.f("fk_payments_invoice_id_invoices"), ondelete="CASCADE"
+            ["invoice_id"],
+            ["invoices.id"],
+            name=op.f("fk_payments_invoice_id_invoices"),
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_payments")),
     )

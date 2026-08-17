@@ -5,17 +5,19 @@ Revises: a28cbe094ce8
 Create Date: 2026-08-17 22:01:17.183121
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "5e84f4d13f0c"
-down_revision: Union[str, Sequence[str], None] = "a28cbe094ce8"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "a28cbe094ce8"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # ---------------------------------------------------------------------------
 # Dev bootstrap. CHANGE THE PASSWORD after first login:
@@ -87,9 +89,7 @@ def _get_or_create_id(conn, table, id_col, match_col, value, **insert_values) ->
     if existing is not None:
         return int(existing)
     return int(
-        conn.execute(
-            sa.insert(table).values(**insert_values).returning(id_col)
-        ).scalar_one()
+        conn.execute(sa.insert(table).values(**insert_values).returning(id_col)).scalar_one()
     )
 
 
@@ -98,8 +98,13 @@ def upgrade() -> None:
     conn = op.get_bind()
 
     role_id = _get_or_create_id(
-        conn, roles, roles.c.id, roles.c.name, SUPERADMIN_ROLE,
-        name=SUPERADMIN_ROLE, description=SUPERADMIN_ROLE_DESC,
+        conn,
+        roles,
+        roles.c.id,
+        roles.c.name,
+        SUPERADMIN_ROLE,
+        name=SUPERADMIN_ROLE,
+        description=SUPERADMIN_ROLE_DESC,
     )
 
     perm_ids: list[int] = []
@@ -115,16 +120,18 @@ def upgrade() -> None:
         )
 
     admin_id = _get_or_create_id(
-        conn, admins, admins.c.id, admins.c.username, SUPERADMIN_USERNAME,
+        conn,
+        admins,
+        admins.c.id,
+        admins.c.username,
+        SUPERADMIN_USERNAME,
         username=SUPERADMIN_USERNAME,
         email=SUPERADMIN_EMAIL,
         password_hash=SUPERADMIN_PASSWORD_HASH,
         is_active=True,
     )
     conn.execute(
-        pg_insert(admin_roles)
-        .values(admin_id=admin_id, role_id=role_id)
-        .on_conflict_do_nothing()
+        pg_insert(admin_roles).values(admin_id=admin_id, role_id=role_id).on_conflict_do_nothing()
     )
 
 

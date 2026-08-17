@@ -5,17 +5,19 @@ Revises: 5e84f4d13f0c
 Create Date: 2026-08-17 22:15:36.468807
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "09e98b342160"
-down_revision: Union[str, Sequence[str], None] = "5e84f4d13f0c"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = "5e84f4d13f0c"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 AUDITOR_ROLE = "auditor"
 AUDITOR_ROLE_DESC = "Read-only access to all NetGrid resources"
@@ -45,7 +47,9 @@ def _get_or_create_id(conn, table, id_col, match_col, value, **insert_values) ->
     existing = conn.execute(sa.select(id_col).where(match_col == value)).scalar_one_or_none()
     if existing is not None:
         return int(existing)
-    return int(conn.execute(sa.insert(table).values(**insert_values).returning(id_col)).scalar_one())
+    return int(
+        conn.execute(sa.insert(table).values(**insert_values).returning(id_col)).scalar_one()
+    )
 
 
 def _link(conn, role_id: int, permission_id: int) -> None:
