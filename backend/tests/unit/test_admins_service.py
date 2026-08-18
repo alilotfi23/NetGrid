@@ -4,7 +4,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from app.core.security import hash_password, verify_password
-from app.models.rbac import Admin, Permission, Role
+from app.models.audit import AuditLog
+from app.models.rbac import Admin, Permission, Role, admin_roles
 from app.services import admins as admins_service
 
 
@@ -260,6 +261,110 @@ async def test_set_role_permissions_allowed_when_manage_kept_elsewhere(session):
         session, role, ["subscribers:read"], actor.id
     )
     assert [p.code for p in updated.permissions] == ["subscribers:read"]
+
+
+# ---------------------------------------------------------------------------
+# delete_admin
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_admin_removes_row_and_role_links(session, monkeypatch):
+    role = await _seed_role(session, "support", ["subscribers:read"])
+    target = await _reload_with_roles(session, (await _seed_admin(session, "doomed")).id)
+    target.roles.append(role)
+    await session.commit()
+    actor = await _seed_admin(session, "actor", [["admins:manage"]])
+    invalidated: list[int] = []
+
+    async def fake_invalidate(admin_id: int) -> None:
+        invalidated.append(admin_id)
+
+    monkeypatch.setattr(admins_service, "invalidate_admin_permissions", fake_invalidate)
+    await admins_service.delete_admin(session, target, actor.id)
+
+    assert invalidated == [target.id]
+    assert (
+        await session.execute(select(Admin).where(Admin.id == target.id))
+    ).scalar_one_or_none() is None
+    # the role survives; the admin_roles link is gone
+    assert (await session.execute(select(Role).where(Role.id == role.id))).scalar_one() is not None
+    remaining = (
+        (
+            await session.execute(
+                select(admin_roles.c.admin_id).where(admin_roles.c.role_id == role.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(remaining) == []
+    # audit trail
+    entries = (await session.execute(select(AuditLog))).scalars().all()
+    assert any(e.action == "delete" and e.resource == "admins" for e in entries)
+
+
+async def test_delete_admin_cannot_delete_self(session):
+    admin = await _seed_admin(session, "bob", [["admins:manage"]])
+    with pytest.raises(BadRequestError):
+        await admins_service.delete_admin(session, admin, admin.id)
+
+
+# ---------------------------------------------------------------------------
+# delete_role
+# ---------------------------------------------------------------------------
+
+
+async def test_delete_role_unassigns_members_and_invalidates(session, monkeypatch):
+    role = await _seed_role(session, "support", ["subscribers:read"])
+    member1 = await _reload_with_roles(session, (await _seed_admin(session, "m1")).id)
+    member2 = await _reload_with_roles(session, (await _seed_admin(session, "m2")).id)
+    member1.roles.append(role)
+    member2.roles.append(role)
+    await session.commit()
+    actor = await _seed_admin(session, "actor", [["roles:manage"]])
+    invalidated: list[int] = []
+
+    async def fake_invalidate(admin_id: int) -> None:
+        invalidated.append(admin_id)
+
+    monkeypatch.setattr(admins_service, "invalidate_admin_permissions", fake_invalidate)
+    await admins_service.delete_role(session, role, actor.id)
+
+    assert sorted(invalidated) == sorted([member1.id, member2.id])
+    assert (
+        await session.execute(select(Role).where(Role.id == role.id))
+    ).scalar_one_or_none() is None
+    # members survive, unassigned (association rows gone)
+    remaining = (
+        (
+            await session.execute(
+                select(admin_roles.c.admin_id).where(admin_roles.c.role_id == role.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(remaining) == []
+    for member in (member1, member2):
+        assert (
+            await session.execute(select(Admin).where(Admin.id == member.id))
+        ).scalar_one() is not None
+
+
+async def test_delete_role_self_manage_guard(session):
+    # the actor's only role grants *:*; deleting it would lock them out
+    actor = await _seed_admin(session, "actor", [["*:*"]])
+    with pytest.raises(BadRequestError):
+        await admins_service.delete_role(session, actor.roles[0], actor.id)
+
+
+async def test_delete_role_allowed_when_manage_kept_elsewhere(session):
+    actor = await _seed_admin(session, "actor", [["*:*"], ["admins:manage"]])
+    role = actor.roles[0]  # the *:* role
+    await admins_service.delete_role(session, role, actor.id)
+    assert (
+        await session.execute(select(Role).where(Role.id == role.id))
+    ).scalar_one_or_none() is None
 
 
 # ---------------------------------------------------------------------------

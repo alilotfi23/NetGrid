@@ -107,6 +107,26 @@ async def set_role_permissions(
     return RoleOut.model_validate(role)
 
 
+@router.delete("/{role_id}", status_code=204)
+@limiter.limit(LIMITS["admin_write"])
+async def delete_role(
+    request: Request,
+    response: Response,
+    role_id: int,
+    session: SessionDep,
+    actor: Annotated[Admin, Depends(require_permission("roles:manage"))],
+) -> Response:
+    """DELETE /api/v1/roles/{id} — requires roles:manage.
+
+    Deletes the role, unassigning every member via the admin_roles FK cascade
+    and invalidating their permission caches. Rejected if deleting a role you
+    hold would strip your own admins:manage access (self-protection).
+    """
+    role = await admins_service.get_role_or_404(session, role_id)
+    await admins_service.delete_role(session, role, actor.id)
+    return Response(status_code=204)
+
+
 @permissions_router.get("", response_model=Page[PermissionOut])
 @limiter.limit(LIMITS["admin_read"])
 async def list_permissions(

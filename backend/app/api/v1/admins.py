@@ -98,3 +98,23 @@ async def set_admin_roles(
     admin = await admins_service.get_admin_or_404(session, admin_id)
     admin = await admins_service.set_admin_roles(session, admin, payload.role_ids, actor.id)
     return AdminOut.model_validate(admin)
+
+
+@router.delete("/{admin_id}", status_code=204)
+@limiter.limit(LIMITS["admin_write"])
+async def delete_admin(
+    request: Request,
+    response: Response,
+    admin_id: int,
+    session: SessionDep,
+    actor: Annotated[Admin, Depends(require_permission("admins:manage"))],
+) -> Response:
+    """DELETE /api/v1/admins/{id} — requires admins:manage.
+
+    Removes the admin; role assignments cascade via the admin_roles FK.
+    Deleting yourself is rejected (self-protection), and the deleted admin's
+    permission cache is invalidated.
+    """
+    admin = await admins_service.get_admin_or_404(session, admin_id)
+    await admins_service.delete_admin(session, admin, actor.id)
+    return Response(status_code=204)

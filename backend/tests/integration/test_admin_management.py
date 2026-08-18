@@ -2,7 +2,7 @@ from sqlalchemy import select
 
 from app.core.security import hash_password
 from app.models.audit import AuditLog
-from app.models.rbac import Admin, Permission, Role
+from app.models.rbac import Admin, Permission, Role, admin_roles
 
 
 async def _ensure_permissions(session, *codes: str) -> None:
@@ -155,6 +155,8 @@ async def test_auditor_read_only(client, session):
         ("patch", f"/api/v1/admins/{admin_id}", {"is_active": False}),
         ("put", f"/api/v1/admins/{admin_id}/roles", {"role_ids": []}),
         ("put", f"/api/v1/roles/{role_id}/permissions", {"permission_codes": []}),
+        ("delete", f"/api/v1/admins/{admin_id}", None),
+        ("delete", f"/api/v1/roles/{role_id}", None),
     ]
     for method, path, body in mutations:
         resp = await client.request(method, path, json=body, headers=_auth(token))
@@ -287,6 +289,10 @@ async def test_404_unknown_resources(client, session):
         headers=_auth(token),
     )
     assert resp.status_code == 404
+    resp = await client.delete("/api/v1/admins/999", headers=_auth(token))
+    assert resp.status_code == 404
+    resp = await client.delete("/api/v1/roles/999", headers=_auth(token))
+    assert resp.status_code == 404
 
 
 async def test_audit_entries_written(client, session):
@@ -318,3 +324,82 @@ async def test_audit_entries_written(client, session):
     assert ("create", "roles") in actions
     assert ("update_permissions", "roles") in actions
     assert ("assign_roles", "admins") in actions
+
+
+async def test_delete_admin_removes_row_and_revokes_tokens(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    super_token = await _login(client)
+    resp = await client.post(
+        "/api/v1/admins",
+        json={"username": "bob", "email": "bob@netgrid.local", "password": "secret123"},
+        headers=_auth(super_token),
+    )
+    assert resp.status_code == 201
+    admin_id = resp.json()["id"]
+    bob_token = await _login(client, "bob")
+
+    resp = await client.delete(f"/api/v1/admins/{admin_id}", headers=_auth(super_token))
+    assert resp.status_code == 204, resp.text
+
+    assert (
+        await session.execute(select(Admin).where(Admin.id == admin_id))
+    ).scalar_one_or_none() is None
+    # the deleted admin's token is dead on its next use
+    resp = await client.get("/api/v1/auth/me", headers=_auth(bob_token))
+    assert resp.status_code == 401
+    # audit trail
+    rows = (
+        (await session.execute(select(AuditLog).where(AuditLog.action == "delete"))).scalars().all()
+    )
+    assert any(r.resource == "admins" and r.resource_id == str(admin_id) for r in rows)
+
+
+async def test_delete_self_400(client, session):
+    admin = await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    resp = await client.delete(f"/api/v1/admins/{admin.id}", headers=_auth(token))
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "BAD_REQUEST"
+
+
+async def test_delete_role_unassigns_members_and_revokes_tokens(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    super_token = await _login(client)
+    role = await _seed_role(session, "support", ["admins:read"])
+    await _seed_admin_with_role(session, "alice", role)
+    alice_token = await _login(client, "alice")
+    resp = await client.get("/api/v1/auth/me", headers=_auth(alice_token))
+    assert resp.status_code == 200
+
+    resp = await client.delete(f"/api/v1/roles/{role.id}", headers=_auth(super_token))
+    assert resp.status_code == 204, resp.text
+
+    assert (
+        await session.execute(select(Role).where(Role.id == role.id))
+    ).scalar_one_or_none() is None
+    # member unassigned (association rows gone)
+    remaining = (
+        (
+            await session.execute(
+                select(admin_roles.c.admin_id).where(admin_roles.c.role_id == role.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert list(remaining) == []
+    # old token is stale -> 401; fresh login carries the empty set -> 403
+    resp = await client.get("/api/v1/auth/me", headers=_auth(alice_token))
+    assert resp.status_code == 401
+    alice_token = await _login(client, "alice")
+    resp = await client.get("/api/v1/auth/me", headers=_auth(alice_token))
+    assert resp.status_code == 403
+
+
+async def test_delete_role_self_protection_400(client, session):
+    admin = await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    role_id = admin.roles[0].id
+    resp = await client.delete(f"/api/v1/roles/{role_id}", headers=_auth(token))
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "BAD_REQUEST"

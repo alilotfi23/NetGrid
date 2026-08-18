@@ -203,6 +203,30 @@ async def set_admin_roles(
     return admin
 
 
+async def delete_admin(session: AsyncSession, admin: Admin, actor_id: int) -> None:
+    """Delete an admin; role assignments cascade via the admin_roles FK.
+
+    Deleting yourself is rejected (self-protection). The deleted admin's
+    permission cache is invalidated, so any outstanding token is rejected on
+    its next use (get_current_admin no longer finds the admin anyway).
+    """
+    admin_id = admin.id
+    if admin_id == actor_id:
+        raise BadRequestError("Cannot delete yourself")
+    metadata_: dict[str, object] = {"username": admin.username, "email": admin.email}
+    await session.delete(admin)
+    await session.commit()
+    await invalidate_admin_permissions(admin_id)
+    await audit_service.record_audit(
+        session,
+        admin_id=actor_id,
+        action="delete",
+        resource="admins",
+        resource_id=str(admin_id),
+        metadata_=metadata_,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Role mutations
 # ---------------------------------------------------------------------------
@@ -298,3 +322,34 @@ async def set_role_permissions(
         metadata_={"permission_codes": permission_codes},
     )
     return role
+
+
+async def delete_role(session: AsyncSession, role: Role, actor_id: int) -> None:
+    """Delete a role, unassigning every member via the admin_roles FK cascade.
+
+    Every member's permission cache is invalidated so the revocation takes
+    effect immediately. Self-protection: deleting a role you hold must not
+    strip your own admins:manage access (the classic lockout path).
+    """
+    role_id = role.id
+    member_ids = await _role_member_ids(session, role_id)
+    role_codes = {p.code for p in role.permissions}
+
+    state = await get_permission_state(session, actor_id)
+    if has_permission(state.codes, ADMINS_MANAGE) and actor_id in member_ids:
+        if not has_permission(set(state.codes) - role_codes, ADMINS_MANAGE):
+            raise BadRequestError("This change would remove your own admins:manage access")
+
+    name = role.name
+    await session.delete(role)
+    await session.commit()
+    for admin_id in member_ids:
+        await invalidate_admin_permissions(admin_id)
+    await audit_service.record_audit(
+        session,
+        admin_id=actor_id,
+        action="delete",
+        resource="roles",
+        resource_id=str(role_id),
+        metadata_={"name": name, "member_ids": member_ids},
+    )
