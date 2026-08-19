@@ -140,6 +140,25 @@ async def test_list_nas_devices_paginates_and_filters(session):
     assert [d.name for d in filtered] == ["r1"]
 
 
+async def test_list_nas_devices_filters_by_type(session):
+    actor = await _seed_actor(session)
+    await _create(session, actor.id, name="r1", ip="192.168.0.1", nas_type="mikrotik")
+    await _create(session, actor.id, name="r2", ip="192.168.0.2", nas_type="mikrotik")
+    await _create(session, actor.id, name="r3", ip="192.168.0.3", nas_type="cisco")
+
+    mikrotik, total = await nas_service.list_nas_devices(
+        session, page=1, page_size=20, nas_type="mikrotik"
+    )
+    assert total == 2
+    assert {d.name for d in mikrotik} == {"r1", "r2"}
+
+    cisco, total = await nas_service.list_nas_devices(
+        session, page=1, page_size=20, nas_type="cisco"
+    )
+    assert total == 1
+    assert [d.name for d in cisco] == ["r3"]
+
+
 async def test_update_secret_rotates_nas_row(session):
     actor = await _seed_actor(session)
     device = await _create(session, actor.id)

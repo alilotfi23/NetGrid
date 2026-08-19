@@ -1,8 +1,13 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { SubscriberStats } from "@/lib/api";
 import { StatsCardView } from "./stats-card-view";
+
+// PlanBreakdownChart uses the router to drill down to filtered lists.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 const STATS: SubscriberStats = {
   active: 2,

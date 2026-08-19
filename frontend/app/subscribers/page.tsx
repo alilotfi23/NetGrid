@@ -23,8 +23,15 @@ function statusBadge(status: string) {
   );
 }
 
-export default async function SubscribersPage() {
-  const subs = await loadSubscribers();
+export default async function SubscribersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ plan_id?: string; no_plan?: string }>;
+}) {
+  const params = await searchParams;
+  const planId = params.plan_id ? Number(params.plan_id) : undefined;
+  const noPlan = params.no_plan === "1";
+  const subs = await loadSubscribers({ planId, noPlan });
   const plans = await loadPlans();
   const planNames = new Map(plans.ok ? plans.plans.map((p) => [p.id, p.name]) : []);
 
@@ -48,6 +55,27 @@ export default async function SubscribersPage() {
             New subscriber
           </Link>
         </div>
+
+        {(planId != null || noPlan) && (
+          <div className="mt-4 flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
+            <span>
+              {noPlan ? (
+                <>Showing subscribers with no plan.</>
+              ) : (
+                <>
+                  Showing subscribers on{" "}
+                  <strong>
+                    {planId != null ? (planNames.get(planId) ?? `plan #${planId}`) : ""}
+                  </strong>
+                  .
+                </>
+              )}
+            </span>
+            <Link href="/subscribers" className="font-medium underline">
+              Clear filter
+            </Link>
+          </div>
+        )}
 
         {!subs.ok ? (
           <p className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

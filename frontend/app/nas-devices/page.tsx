@@ -63,8 +63,13 @@ function NasDeviceTable({ devices }: { devices: NasDevice[] }) {
   );
 }
 
-export default async function NasDevicesPage() {
-  const result = await loadNasDevices();
+export default async function NasDevicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ nas_type?: string }>;
+}) {
+  const { nas_type } = await searchParams;
+  const result = await loadNasDevices(nas_type);
 
   return (
     <main className="flex min-h-screen flex-col bg-zinc-50 font-sans dark:bg-black">
@@ -88,6 +93,18 @@ export default async function NasDevicesPage() {
             New NAS device
           </Link>
         </div>
+
+        {nas_type && (
+          <div className="mb-4 flex items-center gap-3 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
+            <span>
+              Showing devices of type{" "}
+              <strong className="capitalize">{nas_type}</strong>.
+            </span>
+            <Link href="/nas-devices" className="font-medium underline">
+              Clear filter
+            </Link>
+          </div>
+        )}
 
         {!result.ok ? (
           <div className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">

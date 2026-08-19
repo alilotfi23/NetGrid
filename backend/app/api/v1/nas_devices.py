@@ -41,13 +41,18 @@ async def list_nas_devices(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     q: str | None = Query(None, max_length=64),
+    nas_type: str | None = Query(None, max_length=32),
 ) -> NasDeviceList:
     """GET /api/v1/nas-devices — requires nas_devices:read.
 
     Returns the paginated page plus global `stats` (total/active/inactive
-    counts and a by_type breakdown) for the dashboard cards.
+    counts and a by_type breakdown) for the dashboard cards. `nas_type`
+    filters to an exact vendor type — the by-type breakdown drills down
+    through it.
     """
-    items, total = await nas_devices_service.list_nas_devices(session, page, page_size, q)
+    items, total = await nas_devices_service.list_nas_devices(
+        session, page, page_size, q, nas_type=nas_type
+    )
     (
         total_count,
         active_count,

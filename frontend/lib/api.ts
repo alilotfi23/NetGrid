@@ -204,8 +204,13 @@ export type LiveSession = {
   framedipaddress: string | null;
 };
 
-export async function getSubscribers(): Promise<Subscriber[]> {
-  const res = await apiFetch("/api/v1/subscribers?page_size=100");
+export async function getSubscribers(
+  filters?: { planId?: number; noPlan?: boolean },
+): Promise<Subscriber[]> {
+  const params = new URLSearchParams({ page_size: "100" });
+  if (filters?.planId != null) params.set("plan_id", String(filters.planId));
+  if (filters?.noPlan) params.set("no_plan", "1");
+  const res = await apiFetch(`/api/v1/subscribers?${params.toString()}`);
   const page = (await res.json()) as { items: Subscriber[] };
   return page.items;
 }
@@ -214,9 +219,11 @@ export type SubscribersResult =
   | { ok: true; subscribers: Subscriber[] }
   | { ok: false; error: string };
 
-export async function loadSubscribers(): Promise<SubscribersResult> {
+export async function loadSubscribers(
+  filters?: { planId?: number; noPlan?: boolean },
+): Promise<SubscribersResult> {
   try {
-    return { ok: true, subscribers: await getSubscribers() };
+    return { ok: true, subscribers: await getSubscribers(filters) };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
@@ -348,8 +355,12 @@ export type NasDeviceStats = {
   by_type: NasDeviceTypeCount[];
 };
 
-export async function getNasDevices(): Promise<{ devices: NasDevice[]; stats: NasDeviceStats }> {
-  const res = await apiFetch("/api/v1/nas-devices?page_size=100");
+export async function getNasDevices(
+  nasType?: string,
+): Promise<{ devices: NasDevice[]; stats: NasDeviceStats }> {
+  const params = new URLSearchParams({ page_size: "100" });
+  if (nasType) params.set("nas_type", nasType);
+  const res = await apiFetch(`/api/v1/nas-devices?${params.toString()}`);
   const page = (await res.json()) as { items: NasDevice[]; stats: NasDeviceStats };
   return { devices: page.items, stats: page.stats };
 }
@@ -358,9 +369,9 @@ export type NasDevicesResult =
   | { ok: true; devices: NasDevice[]; stats: NasDeviceStats }
   | { ok: false; error: string };
 
-export async function loadNasDevices(): Promise<NasDevicesResult> {
+export async function loadNasDevices(nasType?: string): Promise<NasDevicesResult> {
   try {
-    const { devices, stats } = await getNasDevices();
+    const { devices, stats } = await getNasDevices(nasType);
     return { ok: true, devices, stats };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };

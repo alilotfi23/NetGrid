@@ -21,10 +21,29 @@ describe("NasTypeBreakdownView", () => {
     expect(screen.getByText("1")).toBeTruthy();
   });
 
+  it("links each type row to the type-filtered list", () => {
+    render(
+      <NasTypeBreakdownView
+        byType={[
+          { nas_type: "mikrotik", count: 3 },
+          { nas_type: "cisco", count: 1 },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: /mikrotik/ }).getAttribute("href")).toBe(
+      "/nas-devices?nas_type=mikrotik",
+    );
+    expect(screen.getByRole("link", { name: /cisco/ }).getAttribute("href")).toBe(
+      "/nas-devices?nas_type=cisco",
+    );
+  });
+
   it("scales the bar width proportionally to the largest count", () => {
     render(<NasTypeBreakdownView byType={[{ nas_type: "other", count: 4 }]} />);
 
-    const bar = screen.getByText("other").closest("li")?.querySelector("div > div");
+    const link = screen.getByRole("link", { name: /other/ });
+    const bar = link.querySelector("div > div");
     expect(bar).toHaveProperty("style.width", "100%");
   });
 

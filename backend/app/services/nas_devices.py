@@ -22,9 +22,17 @@ from app.services import audit as audit_service
 
 
 async def list_nas_devices(
-    session: AsyncSession, page: int, page_size: int, q: str | None = None
+    session: AsyncSession,
+    page: int,
+    page_size: int,
+    q: str | None = None,
+    nas_type: str | None = None,
 ) -> tuple[list[NasDevice], int]:
-    """Paginated NAS inventory; `q` matches name or ip_address (case-insensitive)."""
+    """Paginated NAS inventory; `q` matches name or ip_address (case-insensitive).
+
+    `nas_type` filters to an exact vendor type — the dashboard's by-type
+    breakdown drills down through it.
+    """
     count_stmt = select(func.count()).select_from(NasDevice)
     stmt = select(NasDevice).order_by(NasDevice.id)
     if q:
@@ -32,6 +40,9 @@ async def list_nas_devices(
         clause = or_(NasDevice.name.ilike(like), NasDevice.ip_address.ilike(like))
         count_stmt = count_stmt.where(clause)
         stmt = stmt.where(clause)
+    if nas_type:
+        count_stmt = count_stmt.where(NasDevice.nas_type == nas_type)
+        stmt = stmt.where(NasDevice.nas_type == nas_type)
     total = (await session.execute(count_stmt)).scalar_one()
     result = await session.execute(stmt.offset((page - 1) * page_size).limit(page_size))
     return list(result.scalars().all()), int(total)

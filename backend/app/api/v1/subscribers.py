@@ -61,9 +61,18 @@ async def list_subscribers(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     q: str | None = Query(None, max_length=64),
+    plan_id: int | None = Query(None, ge=1),
+    no_plan: bool = False,
 ) -> Page[SubscriberOut]:
-    """GET /api/v1/subscribers — requires subscribers:read."""
-    items, total = await subscribers_service.list_subscribers(session, page, page_size, q)
+    """GET /api/v1/subscribers — requires subscribers:read.
+
+    `plan_id` filters to a specific plan and `no_plan` filters to
+    subscribers with no plan — the dashboard's by-plan breakdown drills
+    down through these.
+    """
+    items, total = await subscribers_service.list_subscribers(
+        session, page, page_size, q, plan_id=plan_id, no_plan=no_plan
+    )
     return Page(
         items=[SubscriberOut.model_validate(s) for s in items],
         total=total,

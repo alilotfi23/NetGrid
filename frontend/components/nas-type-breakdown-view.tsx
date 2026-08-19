@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { NasDeviceTypeCount } from "@/lib/api";
 
 export function NasTypeBreakdownView({
@@ -36,16 +38,21 @@ export function NasTypeBreakdownView({
         <ul className="mt-3 space-y-3">
           {rows.map(({ nas_type, count }) => (
             <li key={nas_type} className="text-sm">
-              <div className="flex items-baseline justify-between text-zinc-700 dark:text-zinc-300">
-                <span className="capitalize">{nas_type}</span>
-                <span className="tabular-nums text-zinc-500 dark:text-zinc-400">{count}</span>
-              </div>
-              <div className="mt-1 h-1.5 w-full rounded-full bg-zinc-100 dark:bg-zinc-900">
-                <div
-                  className="h-1.5 rounded-full bg-indigo-500"
-                  style={{ width: max > 0 ? `${(count / max) * 100}%` : "0%" }}
-                />
-              </div>
+              <Link
+                href={`/nas-devices?nas_type=${encodeURIComponent(nas_type)}`}
+                className="-mx-1 block rounded-lg px-1 py-0.5 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-900"
+              >
+                <div className="flex items-baseline justify-between text-zinc-700 dark:text-zinc-300">
+                  <span className="capitalize">{nas_type}</span>
+                  <span className="tabular-nums text-zinc-500 dark:text-zinc-400">{count}</span>
+                </div>
+                <div className="mt-1 h-1.5 w-full rounded-full bg-zinc-100 dark:bg-zinc-900">
+                  <div
+                    className="h-1.5 rounded-full bg-indigo-500"
+                    style={{ width: max > 0 ? `${(count / max) * 100}%` : "0%" }}
+                  />
+                </div>
+              </Link>
             </li>
           ))}
         </ul>

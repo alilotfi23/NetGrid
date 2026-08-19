@@ -280,3 +280,27 @@ async def test_rotate_secret_validation(client, session):
         "/api/v1/nas-devices/999/rotate-secret", json={"secret": "x"}, headers=_auth(token)
     )
     assert resp.status_code == 404
+
+
+async def test_list_nas_devices_filters_by_type(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    await _create_via_api(client, token, name="r1", ip_address="192.168.0.1", nas_type="mikrotik")
+    await _create_via_api(client, token, name="r2", ip_address="192.168.0.2", nas_type="mikrotik")
+    await _create_via_api(client, token, name="r3", ip_address="192.168.0.3", nas_type="cisco")
+
+    resp = await client.get("/api/v1/nas-devices?nas_type=mikrotik", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert {d["name"] for d in body["items"]} == {"r1", "r2"}
+    # stats stay global — they are not scoped to the filter
+    assert body["stats"]["total"] == 3
+
+    resp = await client.get("/api/v1/nas-devices?nas_type=cisco", headers=_auth(token))
+    body = resp.json()
+    assert body["total"] == 1
+    assert [d["name"] for d in body["items"]] == ["r3"]
+
+    resp = await client.get("/api/v1/nas-devices?nas_type=missing", headers=_auth(token))
+    assert resp.json()["total"] == 0

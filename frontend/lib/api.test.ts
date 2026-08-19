@@ -363,6 +363,41 @@ describe("NAS device helpers", () => {
     });
   });
 
+  it("getNasDevices passes the nas_type filter through to the API", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 100,
+        stats: { total: 0, active: 0, inactive: 0, by_type: [] },
+      }),
+    });
+
+    await getNasDevices("mikrotik");
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/nas-devices?page_size=100&nas_type=mikrotik",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("getSubscribers passes plan_id and no_plan filters through to the API", async () => {
+    mockFetch({ ok: true, json: async () => ({ items: [] }) });
+
+    await getSubscribers({ planId: 3, noPlan: true });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/subscribers?page_size=100&plan_id=3&no_plan=1",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
   it("loadNasDevices returns an error result instead of throwing", async () => {
     mockFetch({ ok: false, status: 403 });
     expect(await loadNasDevices()).toEqual({

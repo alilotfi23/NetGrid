@@ -444,3 +444,38 @@ async def test_sessions_endpoint_empty(client, session):
     resp = await client.get(f"/api/v1/subscribers/{subscriber_id}/sessions", headers=_auth(token))
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+async def test_list_subscribers_filters_by_plan(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    plan = Plan(
+        name="Starter",
+        radius_group="rad_starter",
+        price=Decimal("9.99"),
+        duration_days=30,
+        bandwidth_down_mbps=10,
+        bandwidth_up_mbps=5,
+    )
+    session.add(plan)
+    await session.commit()
+    session.add_all(
+        [
+            Subscriber(username="bob", full_name="Bob", status="active", plan_id=plan.id),
+            Subscriber(username="alice", full_name="Alice", status="active", plan_id=plan.id),
+            Subscriber(username="carol", full_name="Carol", status="active"),  # no plan
+        ]
+    )
+    await session.commit()
+
+    resp = await client.get(f"/api/v1/subscribers?plan_id={plan.id}", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert {s["username"] for s in body["items"]} == {"bob", "alice"}
+
+    resp = await client.get("/api/v1/subscribers?no_plan=1", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert [s["username"] for s in body["items"]] == ["carol"]

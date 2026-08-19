@@ -196,6 +196,25 @@ async def test_list_subscribers_paginates_and_filters(session):
     assert total == 1
 
 
+async def test_list_subscribers_filters_by_plan(session):
+    p1 = await _seed_plan(session, "Starter")
+    await _seed(session, "a1", "active", plan_id=p1.id)
+    await _seed(session, "a2", "active", plan_id=p1.id)
+    await _seed(session, "u1", "active")  # no plan
+
+    assigned, total = await subscribers_service.list_subscribers(
+        session, page=1, page_size=20, plan_id=p1.id
+    )
+    assert total == 2
+    assert {s.username for s in assigned} == {"a1", "a2"}
+
+    unassigned, total = await subscribers_service.list_subscribers(
+        session, page=1, page_size=20, no_plan=True
+    )
+    assert total == 1
+    assert [s.username for s in unassigned] == ["u1"]
+
+
 async def test_create_writes_audit_entry(session):
     actor = await _seed_actor(session)
     await subscribers_service.create_subscriber(

@@ -42,9 +42,19 @@ EXPIRED_STATUS = "expired"
 
 
 async def list_subscribers(
-    session: AsyncSession, page: int, page_size: int, q: str | None = None
+    session: AsyncSession,
+    page: int,
+    page_size: int,
+    q: str | None = None,
+    plan_id: int | None = None,
+    no_plan: bool = False,
 ) -> tuple[list[Subscriber], int]:
-    """Paginated subscriber list; `q` matches username or full name (case-insensitive)."""
+    """Paginated subscriber list.
+
+    `q` matches username or full name (case-insensitive); `plan_id` filters to
+    a specific plan and `no_plan` filters to subscribers with no plan — the
+    dashboard's by-plan breakdown drills down through these.
+    """
     count_stmt = select(func.count()).select_from(Subscriber)
     stmt = select(Subscriber).order_by(Subscriber.id)
     if q:
@@ -52,6 +62,12 @@ async def list_subscribers(
         clause = or_(Subscriber.username.ilike(like), Subscriber.full_name.ilike(like))
         count_stmt = count_stmt.where(clause)
         stmt = stmt.where(clause)
+    if plan_id is not None:
+        count_stmt = count_stmt.where(Subscriber.plan_id == plan_id)
+        stmt = stmt.where(Subscriber.plan_id == plan_id)
+    if no_plan:
+        count_stmt = count_stmt.where(Subscriber.plan_id.is_(None))
+        stmt = stmt.where(Subscriber.plan_id.is_(None))
     total = (await session.execute(count_stmt)).scalar_one()
     result = await session.execute(stmt.offset((page - 1) * page_size).limit(page_size))
     return list(result.scalars().all()), int(total)
