@@ -548,3 +548,153 @@ export async function recordPayment(
   });
   return (await res.json()) as { payment: Payment; invoice: Invoice };
 }
+
+export type RoleBrief = {
+  id: number;
+  name: string;
+  description: string | null;
+};
+
+export type Admin = {
+  id: number;
+  username: string;
+  email: string;
+  is_active: boolean;
+  roles: RoleBrief[];
+};
+
+export type Permission = {
+  id: number;
+  code: string;
+  description: string | null;
+};
+
+export type Role = {
+  id: number;
+  name: string;
+  description: string | null;
+  permissions: Permission[];
+};
+
+export async function getAdmins(): Promise<Admin[]> {
+  const res = await apiFetch("/api/v1/admins?page_size=100");
+  const page = (await res.json()) as { items: Admin[] };
+  return page.items;
+}
+
+export type AdminsResult = { ok: true; admins: Admin[] } | { ok: false; error: string };
+
+export async function loadAdmins(): Promise<AdminsResult> {
+  try {
+    return { ok: true, admins: await getAdmins() };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+export async function getRoles(): Promise<Role[]> {
+  const res = await apiFetch("/api/v1/roles");
+  const page = (await res.json()) as { items: Role[] };
+  return page.items;
+}
+
+export type RolesResult = { ok: true; roles: Role[] } | { ok: false; error: string };
+
+export async function loadRoles(): Promise<RolesResult> {
+  try {
+    return { ok: true, roles: await getRoles() };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+export async function getPermissions(): Promise<Permission[]> {
+  const res = await apiFetch("/api/v1/permissions");
+  const page = (await res.json()) as { items: Permission[] };
+  return page.items;
+}
+
+export type PermissionsResult =
+  | { ok: true; permissions: Permission[] }
+  | { ok: false; error: string };
+
+export async function loadPermissions(): Promise<PermissionsResult> {
+  try {
+    return { ok: true, permissions: await getPermissions() };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+/** The current admin (from /auth/me) — requires admins:read. */
+export async function getMe(): Promise<Admin> {
+  const res = await apiFetch("/api/v1/auth/me");
+  return (await res.json()) as Admin;
+}
+
+export type MeResult = { ok: true; me: Admin } | { ok: false; error: string };
+
+export async function loadMe(): Promise<MeResult> {
+  try {
+    return { ok: true, me: await getMe() };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+/** Mutations — called from route handlers (never from the browser directly). */
+export async function createAdmin(payload: unknown): Promise<Admin> {
+  const res = await apiFetch("/api/v1/admins", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return (await res.json()) as Admin;
+}
+
+export async function updateAdmin(id: number, payload: unknown): Promise<Admin> {
+  const res = await apiFetch(`/api/v1/admins/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return (await res.json()) as Admin;
+}
+
+export async function setAdminRoles(id: number, roleIds: number[]): Promise<Admin> {
+  const res = await apiFetch(`/api/v1/admins/${id}/roles`, {
+    method: "PUT",
+    body: JSON.stringify({ role_ids: roleIds }),
+  });
+  return (await res.json()) as Admin;
+}
+
+export async function deleteAdmin(id: number): Promise<void> {
+  await apiFetch(`/api/v1/admins/${id}`, { method: "DELETE" });
+}
+
+export async function createRole(payload: unknown): Promise<Role> {
+  const res = await apiFetch("/api/v1/roles", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return (await res.json()) as Role;
+}
+
+export async function updateRole(id: number, payload: unknown): Promise<Role> {
+  const res = await apiFetch(`/api/v1/roles/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return (await res.json()) as Role;
+}
+
+export async function setRolePermissions(id: number, codes: string[]): Promise<Role> {
+  const res = await apiFetch(`/api/v1/roles/${id}/permissions`, {
+    method: "PUT",
+    body: JSON.stringify({ permission_codes: codes }),
+  });
+  return (await res.json()) as Role;
+}
+
+export async function deleteRole(id: number): Promise<void> {
+  await apiFetch(`/api/v1/roles/${id}`, { method: "DELETE" });
+}

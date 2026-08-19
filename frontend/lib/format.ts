@@ -63,6 +63,12 @@ export function formatCurrency(value: string | number | null | undefined): strin
   return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
+/** Permission code minus its resource prefix, e.g. "subscribers:write" -> "write". */
+export function permissionLabel(code: string): string {
+  const colon = code.indexOf(":");
+  return colon >= 0 ? code.slice(colon + 1) : code;
+}
+
 /** Format a "YYYY-MM" report bucket as a readable month, e.g. "Aug 2026". */
 export function formatMonth(month: string | null | undefined): string {
   if (!month) return "—";

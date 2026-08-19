@@ -7,6 +7,7 @@ import {
   formatDay,
   formatDuration,
   formatMonth,
+  permissionLabel,
 } from "./format";
 
 describe("formatBytes", () => {
@@ -97,5 +98,14 @@ describe("formatMonth", () => {
 
   it("passes through non-bucket strings", () => {
     expect(formatMonth("2026")).toBe("2026");
+  });
+});
+
+describe("permissionLabel", () => {
+  it("strips the resource prefix from a permission code", () => {
+    expect(permissionLabel("subscribers:write")).toBe("write");
+    expect(permissionLabel("sessions:disconnect")).toBe("disconnect");
+    expect(permissionLabel("*:*")).toBe("*");
+    expect(permissionLabel("nocolon")).toBe("nocolon");
   });
 });

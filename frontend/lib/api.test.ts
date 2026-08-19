@@ -1,24 +1,35 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createAdmin,
   createNasDevice,
   createPlan,
+  createRole,
   createSubscriber,
+  deleteAdmin,
   deleteNasDevice,
+  deleteRole,
   disconnectSession,
   generateInvoices,
+  getAdmins,
   getInvoices,
+  getMe,
   getNasDevices,
   getPaymentsReport,
+  getPermissions,
   getPlans,
+  getRoles,
   getSessions,
   getSubscriberStats,
   getSubscribers,
+  loadAdmins,
   loadInvoice,
   loadInvoices,
+  loadMe,
   loadNasDevice,
   loadNasDevices,
   loadPaymentsReport,
+  loadRoles,
   loadSessions,
   loadSubscriberHistory,
   loadSubscribers,
@@ -26,7 +37,11 @@ import {
   loadSubscriberStats,
   recordPayment,
   rotateNasDeviceSecret,
+  setAdminRoles,
+  setRolePermissions,
+  updateAdmin,
   updateNasDevice,
+  updateRole,
   updateSubscriber,
 } from "./api";
 
@@ -694,5 +709,192 @@ describe("invoice helpers", () => {
     expect(url).toBe("http://localhost:8000/api/v1/invoices/12/payments");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual({ amount: "10.00", method: "cash" });
+  });
+});
+
+describe("admin and role helpers", () => {
+  const ROLE = {
+    id: 6,
+    name: "support_agent",
+    description: "Customer support",
+    permissions: [
+      { id: 14, code: "subscribers:read", description: null },
+      { id: 19, code: "invoices:read", description: null },
+    ],
+  };
+  const ADMIN = {
+    id: 2,
+    username: "superadmin",
+    email: "superadmin@netgrid.local",
+    is_active: true,
+    roles: [{ id: 3, name: "super_admin", description: null }],
+  };
+  const PERMISSIONS = [
+    { id: 14, code: "subscribers:read", description: null },
+    { id: 29, code: "*:*", description: null },
+  ];
+
+  it("getAdmins returns the paginated items", async () => {
+    mockFetch({ ok: true, json: async () => ({ items: [ADMIN], total: 1, page: 1, page_size: 100 }) });
+
+    await expect(getAdmins()).resolves.toEqual([ADMIN]);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/admins?page_size=100",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("loadAdmins returns an error result instead of throwing", async () => {
+    mockFetch({ ok: false, status: 403 });
+    expect(await loadAdmins()).toEqual({ ok: false, error: "request failed: HTTP 403" });
+  });
+
+  it("getRoles returns the paginated items", async () => {
+    mockFetch({ ok: true, json: async () => ({ items: [ROLE], total: 1, page: 1, page_size: 1 }) });
+
+    await expect(getRoles()).resolves.toEqual([ROLE]);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/roles",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("loadRoles returns an error result instead of throwing", async () => {
+    mockFetch({ ok: false, status: 403 });
+    expect(await loadRoles()).toEqual({ ok: false, error: "request failed: HTTP 403" });
+  });
+
+  it("getPermissions returns the catalog items", async () => {
+    mockFetch({ ok: true, json: async () => ({ items: PERMISSIONS, total: 2, page: 1, page_size: 2 }) });
+
+    await expect(getPermissions()).resolves.toEqual(PERMISSIONS);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/permissions",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("getMe fetches the current admin from /auth/me", async () => {
+    mockFetch({ ok: true, json: async () => ADMIN });
+
+    await expect(getMe()).resolves.toEqual(ADMIN);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/auth/me",
+      expect.anything(),
+    );
+  });
+
+  it("loadMe returns an error result instead of throwing", async () => {
+    mockFetch({ ok: false, status: 403 });
+    expect(await loadMe()).toEqual({ ok: false, error: "request failed: HTTP 403" });
+  });
+
+  it("createAdmin POSTs the payload and returns the created admin", async () => {
+    mockFetch({ ok: true, status: 201, json: async () => ADMIN });
+
+    const created = await createAdmin({
+      username: "superadmin",
+      email: "superadmin@netgrid.local",
+      password: "secret123",
+      role_ids: [3],
+    });
+    expect(created).toEqual(ADMIN);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/admins");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      username: "superadmin",
+      email: "superadmin@netgrid.local",
+      password: "secret123",
+      role_ids: [3],
+    });
+  });
+
+  it("updateAdmin PATCHes to the admin endpoint", async () => {
+    mockFetch({ ok: true, json: async () => ({ ...ADMIN, is_active: false }) });
+
+    const updated = await updateAdmin(2, { is_active: false });
+    expect(updated.is_active).toBe(false);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/admins/2");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({ is_active: false });
+  });
+
+  it("setAdminRoles PUTs the full role set to the roles endpoint", async () => {
+    mockFetch({ ok: true, json: async () => ADMIN });
+
+    await setAdminRoles(2, [3]);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/admins/2/roles");
+    expect(init?.method).toBe("PUT");
+    expect(JSON.parse(String(init?.body))).toEqual({ role_ids: [3] });
+  });
+
+  it("deleteAdmin DELETEs without a body", async () => {
+    mockFetch({ ok: true, status: 204, json: async () => ({}) });
+
+    await deleteAdmin(2);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/admins/2");
+    expect(init?.method).toBe("DELETE");
+  });
+
+  it("createRole POSTs the payload and returns the created role", async () => {
+    mockFetch({ ok: true, status: 201, json: async () => ROLE });
+
+    const created = await createRole({
+      name: "support_agent",
+      description: "Customer support",
+      permission_codes: ["subscribers:read"],
+    });
+    expect(created).toEqual(ROLE);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/roles");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "support_agent",
+      description: "Customer support",
+      permission_codes: ["subscribers:read"],
+    });
+  });
+
+  it("updateRole PATCHes to the role endpoint", async () => {
+    mockFetch({ ok: true, json: async () => ({ ...ROLE, name: "support" }) });
+
+    const updated = await updateRole(6, { name: "support" });
+    expect(updated.name).toBe("support");
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/roles/6");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({ name: "support" });
+  });
+
+  it("setRolePermissions PUTs the permission-code set", async () => {
+    mockFetch({ ok: true, json: async () => ROLE });
+
+    await setRolePermissions(6, ["subscribers:read"]);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/roles/6/permissions");
+    expect(init?.method).toBe("PUT");
+    expect(JSON.parse(String(init?.body))).toEqual({ permission_codes: ["subscribers:read"] });
+  });
+
+  it("deleteRole DELETEs without a body", async () => {
+    mockFetch({ ok: true, status: 204, json: async () => ({}) });
+
+    await deleteRole(6);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/roles/6");
+    expect(init?.method).toBe("DELETE");
   });
 });

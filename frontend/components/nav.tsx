@@ -9,6 +9,7 @@ const links = [
   { href: "/invoices", label: "Invoices" },
   { href: "/nas-devices", label: "NAS Devices" },
   { href: "/sessions", label: "Sessions" },
+  { href: "/admins", label: "Admins" },
 ];
 
 export function Nav() {
