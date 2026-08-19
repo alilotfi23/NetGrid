@@ -150,3 +150,73 @@ async def test_create_writes_audit_entry(session):
         e.action == "create" and e.resource == "subscribers" and e.admin_id == actor.id
         for e in rows
     )
+
+
+async def _create(session, username="bob", status="active") -> Subscriber:
+    actor = await _seed_actor(session)
+    return await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username=username,
+        full_name="Bob",
+        password="radpass123",
+        status=status,
+    )
+
+
+async def test_update_password_upserts_radius_row(session):
+    subscriber = await _create(session)
+    actor = await _seed_actor(session, "actor2")
+    updated = await subscribers_service.update_subscriber(
+        session, subscriber, actor_id=actor.id, password="newpass456"
+    )
+    assert updated.username == "bob"
+    rows = await _radcheck_rows(session, "bob", RAD_PASSWORD_ATTRIBUTE)
+    assert len(rows) == 1  # upserted, not duplicated
+    assert rows[0].Value == "newpass456"
+
+
+async def test_update_status_syncs_reject(session):
+    subscriber = await _create(session)  # active -> no reject row
+    actor = await _seed_actor(session, "actor2")
+    assert len(await _radcheck_rows(session, "bob", RAD_AUTH_TYPE_ATTRIBUTE)) == 0
+
+    await subscribers_service.update_subscriber(
+        session, subscriber, actor_id=actor.id, status="suspended"
+    )
+    reject = await _radcheck_rows(session, "bob", RAD_AUTH_TYPE_ATTRIBUTE)
+    assert len(reject) == 1
+    assert reject[0].Value == "Reject"
+
+    await subscribers_service.update_subscriber(
+        session, subscriber, actor_id=actor.id, status="active"
+    )
+    assert len(await _radcheck_rows(session, "bob", RAD_AUTH_TYPE_ATTRIBUTE)) == 0
+
+
+async def test_update_profile_fields_leave_radius_untouched(session):
+    subscriber = await _create(session)
+    actor = await _seed_actor(session, "actor2")
+    await subscribers_service.update_subscriber(
+        session, subscriber, actor_id=actor.id, full_name="Robert", email="r@netgrid.local"
+    )
+    assert subscriber.full_name == "Robert"
+    rows = await _radcheck_rows(session, "bob")
+    assert {r.Attribute for r in rows} == {RAD_PASSWORD_ATTRIBUTE}
+
+
+async def test_delete_removes_profile_and_radius_rows(session):
+    subscriber = await _create(session, status="suspended")  # 2 radcheck rows
+    actor = await _seed_actor(session, "actor2")
+    subscriber_id = subscriber.id
+    await subscribers_service.delete_subscriber(session, subscriber, actor.id)
+
+    assert (
+        await session.execute(select(Subscriber).where(Subscriber.id == subscriber_id))
+    ).scalar_one_or_none() is None
+    assert await _radcheck_rows(session, "bob") == []
+    rows = (await session.execute(select(AuditLog))).scalars().all()
+    assert any(
+        e.action == "delete" and e.resource == "subscribers" and e.resource_id == str(subscriber_id)
+        for e in rows
+    )

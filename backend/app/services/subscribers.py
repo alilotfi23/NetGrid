@@ -8,7 +8,7 @@ subscriber cannot authenticate. `plan_id` is deliberately not touched here —
 plan assignment writes `radusergroup` and arrives with Phase 6.
 """
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,6 +104,114 @@ async def create_subscriber(
         metadata_={"username": username, "status": status},
     )
     return subscriber
+
+
+# ---------------------------------------------------------------------------
+# Update / delete
+# ---------------------------------------------------------------------------
+
+
+async def _upsert_password(session: AsyncSession, username: str, password: str) -> None:
+    """Set (or create) the Cleartext-Password check row for a subscriber."""
+    row = (
+        await session.execute(
+            select(RadCheck).where(
+                RadCheck.UserName == username,
+                RadCheck.Attribute == RAD_PASSWORD_ATTRIBUTE,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        session.add(
+            RadCheck(
+                UserName=username,
+                Attribute=RAD_PASSWORD_ATTRIBUTE,
+                op=RAD_OP_SET,
+                Value=password,
+            )
+        )
+    else:
+        row.Value = password
+
+
+async def _set_reject(session: AsyncSession, username: str, *, reject: bool) -> None:
+    """Add or remove the Auth-Type := Reject check row per the subscriber's status."""
+    row = (
+        await session.execute(
+            select(RadCheck).where(
+                RadCheck.UserName == username,
+                RadCheck.Attribute == RAD_AUTH_TYPE_ATTRIBUTE,
+            )
+        )
+    ).scalar_one_or_none()
+    if reject and row is None:
+        session.add(_reject_check(username))
+    elif not reject and row is not None:
+        await session.delete(row)
+
+
+async def update_subscriber(
+    session: AsyncSession,
+    subscriber: Subscriber,
+    *,
+    actor_id: int,
+    full_name: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    password: str | None = None,
+    status: str | None = None,
+    notes: str | None = None,
+) -> Subscriber:
+    """Apply profile changes; password and status changes sync radcheck rows."""
+    changed: list[str] = []
+    if full_name is not None and full_name != subscriber.full_name:
+        subscriber.full_name = full_name
+        changed.append("full_name")
+    if email is not None and email != subscriber.email:
+        subscriber.email = email
+        changed.append("email")
+    if phone is not None and phone != subscriber.phone:
+        subscriber.phone = phone
+        changed.append("phone")
+    if notes is not None and notes != subscriber.notes:
+        subscriber.notes = notes
+        changed.append("notes")
+    if password is not None:
+        await _upsert_password(session, subscriber.username, password)
+        changed.append("password")
+    if status is not None and status != subscriber.status:
+        subscriber.status = status
+        await _set_reject(session, subscriber.username, reject=status != ACTIVE_STATUS)
+        changed.append("status")
+
+    if changed:
+        await _commit_or_conflict(session, "Username already exists")
+        await audit_service.record_audit(
+            session,
+            admin_id=actor_id,
+            action="update",
+            resource="subscribers",
+            resource_id=str(subscriber.id),
+            metadata_={"username": subscriber.username, "fields": changed},
+        )
+    return subscriber
+
+
+async def delete_subscriber(session: AsyncSession, subscriber: Subscriber, actor_id: int) -> None:
+    """Delete the profile and every radcheck row for its username in one transaction."""
+    username = subscriber.username
+    subscriber_id = subscriber.id
+    await session.execute(delete(RadCheck).where(RadCheck.UserName == username))
+    await session.delete(subscriber)
+    await session.commit()
+    await audit_service.record_audit(
+        session,
+        admin_id=actor_id,
+        action="delete",
+        resource="subscribers",
+        resource_id=str(subscriber_id),
+        metadata_={"username": username},
+    )
 
 
 # ---------------------------------------------------------------------------
