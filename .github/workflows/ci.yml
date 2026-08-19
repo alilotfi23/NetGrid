@@ -93,10 +93,13 @@ jobs:
           tail -50 /tmp/netgrid-uvicorn.log
           exit 1
 
-      # Both scripts are self-cleaning (they delete what they seed), so they
-      # can run back to back against the same database.
+      # All three scripts are self-cleaning (they delete/deactivate what they
+      # seed), so they can run back to back against the same database.
       - name: Smoke — invoices API
         run: ./scripts/smoke_invoices.sh
+
+      - name: Smoke — subscribers + plans API
+        run: ./scripts/smoke_subscribers_plans.sh
 
       - name: Smoke — sessions API
         run: ./scripts/smoke_sessions.sh
