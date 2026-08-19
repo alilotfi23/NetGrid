@@ -58,6 +58,7 @@ async def app(session):
     so they need no cleanup.
     """
     test_app = create_app()
+    test_app.state.testing = True  # lifespan must not start the APScheduler in tests
     app_limiter.reset()
     test_app.dependency_overrides[get_session] = lambda: session
     yield test_app

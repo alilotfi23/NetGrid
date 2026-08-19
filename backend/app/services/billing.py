@@ -1,0 +1,311 @@
+"""Billing service: pricing/proration, invoice generation, payments (Phase 10).
+
+The monthly invoice job (`app/jobs/invoice_generation.py`) drives
+`generate_invoices`, which bills every active subscriber on an active plan
+once per period. Payments accumulate against an invoice; the invoice flips
+to ``paid`` only when completed payments reach its amount. Proration applies
+when the billed period is shorter than the plan's duration (e.g. a mid-cycle
+activation or a partial-month manual run).
+
+Status model:
+  Invoice:  issued -> paid | overdue
+  Payment:  pending -> completed | failed   (the API only creates completed)
+
+No RADIUS coupling here — billing is pure bookkeeping on our own tables.
+"""
+
+from datetime import UTC, date, datetime, timedelta
+from decimal import ROUND_HALF_UP, Decimal
+
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import contains_eager, selectinload
+
+from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
+from app.models.billing import Invoice, Payment
+from app.models.plan import Plan
+from app.models.subscriber import Subscriber
+from app.services import audit as audit_service
+
+INVOICE_ISSUED = "issued"
+INVOICE_PAID = "paid"
+INVOICE_OVERDUE = "overdue"
+
+PAYMENT_PENDING = "pending"
+PAYMENT_COMPLETED = "completed"
+PAYMENT_FAILED = "failed"
+
+CENT = Decimal("0.01")
+
+
+# ---------------------------------------------------------------------------
+# Pricing / proration (pure functions, unit-tested directly)
+# ---------------------------------------------------------------------------
+
+
+def prorate_amount(price: Decimal, days_in_period: int, total_days: int) -> Decimal:
+    """Pro-rate ``price`` to a partial period, rounded half-up to cents.
+
+    ``days_in_period`` is the number of billed days; ``total_days`` is the
+    plan's full period length. A zero/negative billed period bills nothing.
+    """
+    if total_days <= 0:
+        raise ValueError("total_days must be positive")
+    if days_in_period <= 0:
+        return Decimal("0.00")
+    ratio = Decimal(days_in_period) / Decimal(total_days)
+    return (price * ratio).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def compute_invoice_amount(
+    price: Decimal, period_start: date, period_end: date, duration_days: int
+) -> Decimal:
+    """Amount for a period: full price when it spans the plan duration, else prorated.
+
+    A period at least as long as the plan's duration bills the full price; a
+    shorter period (partial month, mid-cycle activation) is prorated by days.
+    """
+    period_days = (period_end - period_start).days + 1
+    if period_days >= duration_days:
+        return price
+    return prorate_amount(price, period_days, duration_days)
+
+
+# ---------------------------------------------------------------------------
+# Queries
+# ---------------------------------------------------------------------------
+
+
+async def list_invoices(
+    session: AsyncSession,
+    page: int,
+    page_size: int,
+    *,
+    subscriber_id: int | None = None,
+    status: str | None = None,
+) -> tuple[list[Invoice], int]:
+    """Paginated invoice list, newest first; filters on subscriber/status."""
+    count_stmt = select(func.count()).select_from(Invoice)
+    stmt = (
+        select(Invoice)
+        .options(selectinload(Invoice.payments))
+        .order_by(Invoice.issued_at.desc(), Invoice.id.desc())
+    )
+    if subscriber_id is not None:
+        count_stmt = count_stmt.where(Invoice.subscriber_id == subscriber_id)
+        stmt = stmt.where(Invoice.subscriber_id == subscriber_id)
+    if status is not None:
+        count_stmt = count_stmt.where(Invoice.status == status)
+        stmt = stmt.where(Invoice.status == status)
+    total = (await session.execute(count_stmt)).scalar_one()
+    result = await session.execute(stmt.offset((page - 1) * page_size).limit(page_size))
+    return list(result.scalars().all()), int(total)
+
+
+async def get_invoice_or_404(session: AsyncSession, invoice_id: int) -> Invoice:
+    """Fetch one invoice with its payments eager-loaded."""
+    invoice = (
+        await session.execute(
+            select(Invoice).where(Invoice.id == invoice_id).options(selectinload(Invoice.payments))
+        )
+    ).scalar_one_or_none()
+    if invoice is None:
+        raise NotFoundError("Invoice not found")
+    return invoice
+
+
+async def get_invoice_stats(session: AsyncSession) -> dict[str, int | Decimal]:
+    """Status counts plus the total outstanding (unpaid) amount."""
+    rows = (
+        await session.execute(select(Invoice.status, func.count()).group_by(Invoice.status))
+    ).all()
+    counts: dict[str, int] = {INVOICE_ISSUED: 0, INVOICE_PAID: 0, INVOICE_OVERDUE: 0}
+    for status, count in rows:
+        counts[status] = int(count)
+    outstanding = (
+        await session.execute(
+            select(func.coalesce(func.sum(Invoice.amount), 0)).where(
+                Invoice.status.in_([INVOICE_ISSUED, INVOICE_OVERDUE])
+            )
+        )
+    ).scalar_one()
+    # quantize so an empty balance serializes as "0.00", not "0"
+    return {**counts, "outstanding_amount": Decimal(outstanding).quantize(CENT)}
+
+
+async def get_subscriber_usernames(session: AsyncSession, ids: list[int]) -> dict[int, str]:
+    """Map subscriber id -> username for the API layer's display fields."""
+    if not ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(Subscriber.id, Subscriber.username).where(Subscriber.id.in_(ids))
+        )
+    ).all()
+    return {sub_id: username for sub_id, username in rows}
+
+
+# ---------------------------------------------------------------------------
+# Invoice generation (job + manual trigger)
+# ---------------------------------------------------------------------------
+
+
+def _month_end(start: date) -> date:
+    """Last day of the calendar month containing ``start``."""
+    if start.month == 12:
+        return date(start.year + 1, 1, 1) - timedelta(days=1)
+    return date(start.year, start.month + 1, 1) - timedelta(days=1)
+
+
+async def generate_invoices(
+    session: AsyncSession,
+    *,
+    period_start: date | None = None,
+    period_end: date | None = None,
+    actor_id: int | None = None,
+) -> int:
+    """Generate one invoice per active subscriber on an active plan for the period.
+
+    Defaults to the current calendar month. Idempotent: a subscriber who
+    already has an invoice whose period overlaps [period_start, period_end]
+    is skipped, so re-running the job never double-bills. Returns the number
+    of invoices created.
+    """
+    today = date.today()
+    start = period_start or today.replace(day=1)
+    end = period_end or _month_end(start)
+    if end < start:
+        raise BadRequestError("period_end must be on or after period_start")
+
+    subscribers = (
+        (
+            await session.execute(
+                select(Subscriber)
+                .join(Subscriber.plan)
+                .options(contains_eager(Subscriber.plan))
+                .where(Subscriber.status == "active", Plan.is_active.is_(True))
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    created = 0
+    for subscriber in subscribers:
+        overlap = (
+            await session.execute(
+                select(func.count())
+                .select_from(Invoice)
+                .where(
+                    Invoice.subscriber_id == subscriber.id,
+                    Invoice.period_start <= end,
+                    Invoice.period_end >= start,
+                )
+            )
+        ).scalar_one()
+        if overlap > 0:
+            continue
+        plan = subscriber.plan
+        # contains_eager guarantees the joined plan is present; the join itself
+        # filtered out NULL plan_id, so assert to satisfy mypy's narrowing.
+        assert plan is not None
+        amount = compute_invoice_amount(plan.price, start, end, plan.duration_days)
+        session.add(
+            Invoice(
+                subscriber_id=subscriber.id,
+                plan_name=plan.name,
+                period_start=start,
+                period_end=end,
+                amount=amount,
+                status=INVOICE_ISSUED,
+                due_at=end,
+            )
+        )
+        created += 1
+
+    await session.commit()
+    if actor_id is not None and created:
+        await audit_service.record_audit(
+            session,
+            admin_id=actor_id,
+            action="generate",
+            resource="invoices",
+            metadata_={
+                "created": created,
+                "period_start": start.isoformat(),
+                "period_end": end.isoformat(),
+            },
+        )
+    return created
+
+
+async def mark_overdue_invoices(session: AsyncSession) -> int:
+    """Flip issued invoices whose due date has passed to ``overdue``."""
+    result = await session.execute(
+        update(Invoice)
+        .where(Invoice.status == INVOICE_ISSUED, Invoice.due_at < date.today())
+        .values(status=INVOICE_OVERDUE)
+    )
+    await session.commit()
+    # CursorResult.rowcount: how many rows the UPDATE actually changed
+    return result.rowcount or 0  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Payments
+# ---------------------------------------------------------------------------
+
+
+async def record_payment(
+    session: AsyncSession,
+    invoice: Invoice,
+    *,
+    actor_id: int,
+    amount: Decimal,
+    method: str,
+    reference: str | None = None,
+) -> Payment:
+    """Record a completed payment against an invoice.
+
+    The invoice transitions to ``paid`` (with ``paid_at``) the moment
+    completed payments reach or exceed its amount; partial payments leave it
+    issued. Paying an already-paid invoice is rejected.
+    """
+    if invoice.status == INVOICE_PAID:
+        raise ConflictError("Invoice already paid")
+
+    payment = Payment(
+        invoice_id=invoice.id,
+        amount=amount,
+        method=method,
+        reference=reference,
+        status=PAYMENT_COMPLETED,
+    )
+    session.add(payment)
+
+    paid_total = (
+        await session.execute(
+            select(func.coalesce(func.sum(Payment.amount), 0)).where(
+                Payment.invoice_id == invoice.id,
+                Payment.status == PAYMENT_COMPLETED,
+            )
+        )
+    ).scalar_one()
+    if Decimal(paid_total) >= invoice.amount:
+        invoice.status = INVOICE_PAID
+        invoice.paid_at = datetime.now(UTC).replace(tzinfo=None)
+
+    await session.commit()
+    await audit_service.record_audit(
+        session,
+        admin_id=actor_id,
+        action="payment",
+        resource="invoices",
+        resource_id=str(invoice.id),
+        metadata_={
+            "amount": str(amount),
+            "method": method,
+            "invoice_status": invoice.status,
+        },
+    )
+    return payment

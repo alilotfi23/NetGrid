@@ -267,7 +267,7 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Disconnect endpoint (RBAC-gated: `sessions:disconnect`) triggering RADIUS CoA
   - Full unit + integration coverage (data transform/formatting, live session read, disconnect triggers correctly)
 
-- [ ] **Phase 10 — Billing & invoices**
+- [x] **Phase 10 — Billing & invoices**
   - Pricing/proration logic, invoice generation, payment status transitions
   - Background job (APScheduler) for invoice generation
   - Full unit + integration coverage (pricing/proration logic, invoice generation job, payment status transitions, scheduled job produces expected DB state)

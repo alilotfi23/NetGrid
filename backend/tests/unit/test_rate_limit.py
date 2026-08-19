@@ -4,9 +4,6 @@ Tests the limiter configuration, key function, key prefix namespace,
 and the LIMITS dictionary structure — no Redis or HTTP needed.
 """
 
-from unittest.mock import patch
-
-import pytest
 from slowapi import Limiter
 
 
@@ -26,11 +23,9 @@ class TestLimiterConfiguration:
 
     def test_key_func_uses_remote_address(self) -> None:
         """Default key should derive from the client IP."""
-        from app.core.rate_limit import get_remote_address
-
         # get_remote_address is the slowapi default; verify it's the
         # function wired into the limiter.
-        from app.core.rate_limit import limiter
+        from app.core.rate_limit import get_remote_address, limiter
 
         assert limiter._key_func is get_remote_address  # type: ignore[attr-defined]
 
@@ -58,9 +53,7 @@ class TestLimitsDictionary:
         """Read endpoints should allow at least 60 req/min."""
         from app.core.rate_limit import LIMITS
 
-        read_keys = [
-            k for k in LIMITS if k.endswith("_read") or k in ("me",)
-        ]
+        read_keys = [k for k in LIMITS if k.endswith("_read") or k in ("me",)]
         assert len(read_keys) >= 4, f"Expected at least 4 read keys, got {read_keys}"
         for key in read_keys:
             count = int(LIMITS[key].split("/")[0])
@@ -112,6 +105,8 @@ class TestLimitsDictionary:
             "subscriber_write",
             "plan_read",
             "plan_write",
+            "invoice_read",
+            "invoice_write",
             "nas_read",
             "nas_write",
             "sessions_read",
