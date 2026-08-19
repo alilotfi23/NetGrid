@@ -9,18 +9,28 @@ USERNAME_PATTERN = r"^\S+$"
 SubscriberStatus = Literal["active", "suspended", "expired"]
 
 
+class PlanSubscriberCount(BaseModel):
+    """Per-plan subscriber total (all statuses), for the dashboard breakdown."""
+
+    plan_id: int | None
+    plan_name: str | None
+    count: int
+
+
 class SubscriberStats(BaseModel):
     """Status-count snapshot for the dashboard.
 
     Counts the three known statuses (active | suspended | expired); total is
     the count of all subscriber rows, so it stays correct even if an unknown
-    status value appears in the data.
+    status value appears in the data. `by_plan` breaks the total down per
+    plan (all statuses); subscribers without a plan have plan_id None.
     """
 
     active: int
     suspended: int
     expired: int
     total: int
+    by_plan: list[PlanSubscriberCount] = Field(default_factory=list)
 
 
 class SubscriberOut(BaseModel):

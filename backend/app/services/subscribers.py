@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.models.plan import Plan
 from app.models.radius import RadCheck
 from app.models.subscriber import Subscriber
 from app.services import audit as audit_service
@@ -235,6 +236,28 @@ async def get_subscriber_stats(session: AsyncSession) -> dict[str, int]:
         EXPIRED_STATUS: counts.get(EXPIRED_STATUS, 0),
         "total": sum(counts.values()),
     }
+
+
+async def get_subscriber_plan_counts(
+    session: AsyncSession,
+) -> list[dict[str, str | int | None]]:
+    """Count subscribers per plan (all statuses) via a left join.
+
+    Ordered by plan id; subscribers with no plan (plan_id NULL) come last.
+    """
+    rows = (
+        await session.execute(
+            select(Plan.id, Plan.name, func.count(Subscriber.id))
+            .select_from(Subscriber)
+            .outerjoin(Plan, Plan.id == Subscriber.plan_id)
+            .group_by(Plan.id, Plan.name)
+            .order_by(Plan.id)
+        )
+    ).all()
+    return [
+        {"plan_id": plan_id, "plan_name": plan_name, "count": int(count)}
+        for plan_id, plan_name, count in rows
+    ]
 
 
 # ---------------------------------------------------------------------------

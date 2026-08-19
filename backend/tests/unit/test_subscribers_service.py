@@ -1,11 +1,14 @@
 """Unit tests for the subscriber service (services/subscribers)."""
 
+from decimal import Decimal
+
 import pytest
 from sqlalchemy import select
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.core.security import hash_password
 from app.models.audit import AuditLog
+from app.models.plan import Plan
 from app.models.radius import RadCheck
 from app.models.rbac import Admin
 from app.models.subscriber import Subscriber
@@ -34,9 +37,23 @@ async def _seed_actor(session, username="actor") -> Admin:
     return admin
 
 
-async def _seed(session, username: str, status: str) -> None:
-    session.add(Subscriber(username=username, full_name=username, status=status))
+async def _seed(session, username: str, status: str, plan_id: int | None = None) -> None:
+    session.add(Subscriber(username=username, full_name=username, status=status, plan_id=plan_id))
     await session.commit()
+
+
+async def _seed_plan(session, name: str) -> Plan:
+    plan = Plan(
+        name=name,
+        radius_group=f"rad_{name.lower()}",
+        price=Decimal("9.99"),
+        duration_days=30,
+        bandwidth_down_mbps=10,
+        bandwidth_up_mbps=5,
+    )
+    session.add(plan)
+    await session.commit()
+    return plan
 
 
 async def test_get_subscriber_stats_counts_known_statuses(session):
@@ -62,6 +79,26 @@ async def test_get_subscriber_stats_unknown_status_not_in_named_counts(session):
     assert stats["expired"] == 0
     # drift rows still count toward the total
     assert stats["total"] == 2
+
+
+async def test_get_subscriber_plan_counts(session):
+    p1 = await _seed_plan(session, "Starter")
+    p2 = await _seed_plan(session, "Pro")
+    await _seed(session, "a1", "active", plan_id=p1.id)
+    await _seed(session, "a2", "active", plan_id=p1.id)
+    await _seed(session, "s1", "suspended", plan_id=p2.id)
+    await _seed(session, "u1", "active")  # no plan
+
+    counts = await subscribers_service.get_subscriber_plan_counts(session)
+    assert counts == [
+        {"plan_id": p1.id, "plan_name": "Starter", "count": 2},
+        {"plan_id": p2.id, "plan_name": "Pro", "count": 1},
+        {"plan_id": None, "plan_name": None, "count": 1},
+    ]
+
+
+async def test_get_subscriber_plan_counts_empty_db(session):
+    assert await subscribers_service.get_subscriber_plan_counts(session) == []
 
 
 async def test_create_writes_profile_and_radius_password(session):

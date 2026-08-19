@@ -1,9 +1,12 @@
 """Integration tests for the subscribers API (Phase 5)."""
 
+from decimal import Decimal
+
 from sqlalchemy import select
 
 from app.core.security import hash_password
 from app.models.audit import AuditLog
+from app.models.plan import Plan
 from app.models.radius import RadCheck
 from app.models.rbac import Admin, Permission, Role
 from app.models.subscriber import Subscriber
@@ -58,7 +61,13 @@ async def test_stats_returns_counts_for_reader(client, session):
     token = await _login(client)
     resp = await client.get("/api/v1/subscribers/stats", headers=_auth(token))
     assert resp.status_code == 200, resp.text
-    assert resp.json() == {"active": 2, "suspended": 1, "expired": 1, "total": 4}
+    assert resp.json() == {
+        "active": 2,
+        "suspended": 1,
+        "expired": 1,
+        "total": 4,
+        "by_plan": [{"plan_id": None, "plan_name": None, "count": 4}],
+    }
 
 
 async def test_stats_empty_db(client, session):
@@ -66,13 +75,45 @@ async def test_stats_empty_db(client, session):
     token = await _login(client)
     resp = await client.get("/api/v1/subscribers/stats", headers=_auth(token))
     assert resp.status_code == 200
-    assert resp.json() == {"active": 0, "suspended": 0, "expired": 0, "total": 0}
+    assert resp.json() == {"active": 0, "suspended": 0, "expired": 0, "total": 0, "by_plan": []}
 
 
 async def test_stats_requires_authentication(client, session):
     resp = await client.get("/api/v1/subscribers/stats")
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+async def test_stats_includes_plan_breakdown(client, session):
+    await _seed_admin(session, "boss", ["subscribers:read"])
+    token = await _login(client)
+    plan = Plan(
+        name="Starter",
+        radius_group="rad_starter",
+        price=Decimal("9.99"),
+        duration_days=30,
+        bandwidth_down_mbps=10,
+        bandwidth_up_mbps=5,
+    )
+    session.add(plan)
+    await session.commit()
+    session.add_all(
+        [
+            Subscriber(username="a1", full_name="A One", status="active", plan_id=plan.id),
+            Subscriber(username="s1", full_name="S One", status="suspended", plan_id=plan.id),
+            Subscriber(username="u1", full_name="U One", status="active"),
+        ]
+    )
+    await session.commit()
+
+    resp = await client.get("/api/v1/subscribers/stats", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 3
+    assert body["by_plan"] == [
+        {"plan_id": plan.id, "plan_name": "Starter", "count": 2},
+        {"plan_id": None, "plan_name": None, "count": 1},
+    ]
 
 
 async def test_stats_denied_without_permission_and_audited(client, session):
