@@ -96,19 +96,32 @@ async def test_get_nas_device_or_404(session):
 
 async def test_get_nas_device_stats(session):
     actor = await _seed_actor(session)
-    assert await nas_service.get_nas_device_stats(session) == (0, 0, 0)
+    assert await nas_service.get_nas_device_stats(session) == (0, 0, 0, [])
 
     await _create(session, actor.id, name="r1", ip="192.168.0.1")
     await _create(session, actor.id, name="r2", ip="192.168.0.2")
     await _create(session, actor.id, name="r3", ip="192.168.0.3", is_active=False)
-    total, active, inactive = await nas_service.get_nas_device_stats(session)
+    total, active, inactive, by_type = await nas_service.get_nas_device_stats(session)
     assert (total, active, inactive) == (3, 2, 1)
 
     # deactivating one flips the counts without changing the total
     device = await nas_service.get_nas_device_or_404(session, 2)
     await nas_service.update_nas_device(session, device, actor_id=actor.id, is_active=False)
-    total, active, inactive = await nas_service.get_nas_device_stats(session)
+    total, active, inactive, _ = await nas_service.get_nas_device_stats(session)
     assert (total, active, inactive) == (3, 1, 2)
+
+
+async def test_get_nas_device_stats_by_type(session):
+    actor = await _seed_actor(session)
+    await _create(session, actor.id, name="m1", ip="192.168.0.1", nas_type="mikrotik")
+    await _create(session, actor.id, name="m2", ip="192.168.0.2", nas_type="mikrotik")
+    await _create(session, actor.id, name="c1", ip="192.168.0.3", nas_type="cisco")
+    await _create(session, actor.id, name="o1", ip="192.168.0.4", nas_type="other")
+    await _create(session, actor.id, name="o2", ip="192.168.0.5", nas_type="other", is_active=False)
+
+    _, _, _, by_type = await nas_service.get_nas_device_stats(session)
+    # sorted by count descending, then type name
+    assert by_type == [("mikrotik", 2), ("other", 2), ("cisco", 1)]
 
 
 async def test_list_nas_devices_paginates_and_filters(session):

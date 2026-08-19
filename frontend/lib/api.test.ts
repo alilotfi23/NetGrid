@@ -304,13 +304,23 @@ describe("NAS device helpers", () => {
         total: 1,
         page: 1,
         page_size: 100,
-        stats: { total: 1, active: 1, inactive: 0 },
+        stats: {
+          total: 1,
+          active: 1,
+          inactive: 0,
+          by_type: [{ nas_type: "mikrotik", count: 1 }],
+        },
       }),
     });
 
     await expect(getNasDevices()).resolves.toEqual({
       devices: [DEVICE],
-      stats: { total: 1, active: 1, inactive: 0 },
+      stats: {
+        total: 1,
+        active: 1,
+        inactive: 0,
+        by_type: [{ nas_type: "mikrotik", count: 1 }],
+      },
     });
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/nas-devices?page_size=100",
@@ -329,14 +339,24 @@ describe("NAS device helpers", () => {
         total: 1,
         page: 1,
         page_size: 100,
-        stats: { total: 1, active: 1, inactive: 0 },
+        stats: {
+          total: 1,
+          active: 1,
+          inactive: 0,
+          by_type: [{ nas_type: "mikrotik", count: 1 }],
+        },
       }),
     });
 
     await expect(loadNasDevices()).resolves.toEqual({
       ok: true,
       devices: [DEVICE],
-      stats: { total: 1, active: 1, inactive: 0 },
+      stats: {
+        total: 1,
+        active: 1,
+        inactive: 0,
+        by_type: [{ nas_type: "mikrotik", count: 1 }],
+      },
     });
   });
 

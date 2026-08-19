@@ -84,7 +84,12 @@ async def test_superadmin_full_lifecycle(client, session):
     resp = await client.get("/api/v1/nas-devices", headers=_auth(token))
     assert resp.status_code == 200
     assert "core-r1" in [d["name"] for d in resp.json()["items"]]
-    assert resp.json()["stats"] == {"total": 1, "active": 1, "inactive": 0}
+    assert resp.json()["stats"] == {
+        "total": 1,
+        "active": 1,
+        "inactive": 0,
+        "by_type": [{"nas_type": "other", "count": 1}],
+    }
 
     # the stats count every device, not just the page: add a second inactive
     # device and the summary reflects it even on the same page
@@ -95,7 +100,12 @@ async def test_superadmin_full_lifecycle(client, session):
     )
     assert resp.status_code == 201
     resp = await client.get("/api/v1/nas-devices", headers=_auth(token))
-    assert resp.json()["stats"] == {"total": 2, "active": 1, "inactive": 1}
+    assert resp.json()["stats"] == {
+        "total": 2,
+        "active": 1,
+        "inactive": 1,
+        "by_type": [{"nas_type": "other", "count": 2}],
+    }
     assert len(resp.json()["items"]) == 2
 
     resp = await client.get(f"/api/v1/nas-devices/{device_id}", headers=_auth(token))

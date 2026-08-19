@@ -21,6 +21,7 @@ from app.schemas.nas_devices import (
     NasDeviceOut,
     NasDeviceSecretRotate,
     NasDeviceStats,
+    NasDeviceTypeCount,
     NasDeviceUpdate,
 )
 from app.services import nas_devices as nas_devices_service
@@ -43,19 +44,29 @@ async def list_nas_devices(
 ) -> NasDeviceList:
     """GET /api/v1/nas-devices — requires nas_devices:read.
 
-    Returns the paginated page plus global `stats` (total/active/inactive)
-    for the dashboard summary card.
+    Returns the paginated page plus global `stats` (total/active/inactive
+    counts and a by_type breakdown) for the dashboard cards.
     """
     items, total = await nas_devices_service.list_nas_devices(session, page, page_size, q)
-    total_count, active_count, inactive_count = await nas_devices_service.get_nas_device_stats(
-        session
-    )
+    (
+        total_count,
+        active_count,
+        inactive_count,
+        by_type,
+    ) = await nas_devices_service.get_nas_device_stats(session)
     return NasDeviceList(
         items=[NasDeviceOut.model_validate(d) for d in items],
         total=total,
         page=page,
         page_size=page_size,
-        stats=NasDeviceStats(total=total_count, active=active_count, inactive=inactive_count),
+        stats=NasDeviceStats(
+            total=total_count,
+            active=active_count,
+            inactive=inactive_count,
+            by_type=[
+                NasDeviceTypeCount(nas_type=nas_type, count=count) for nas_type, count in by_type
+            ],
+        ),
     )
 
 

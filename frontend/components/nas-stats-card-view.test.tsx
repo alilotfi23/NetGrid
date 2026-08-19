@@ -5,7 +5,7 @@ import { NasStatsCardView } from "./nas-stats-card-view";
 
 describe("NasStatsCardView", () => {
   it("renders the total, active and inactive counts", () => {
-    render(<NasStatsCardView stats={{ total: 5, active: 3, inactive: 2 }} />);
+    render(<NasStatsCardView stats={{ total: 5, active: 3, inactive: 2, by_type: [] }} />);
 
     expect(screen.getByRole("heading", { name: "NAS Devices" })).toBeTruthy();
     expect(screen.getByText("5")).toBeTruthy();
@@ -15,7 +15,7 @@ describe("NasStatsCardView", () => {
   });
 
   it("renders zeroes for an empty inventory", () => {
-    render(<NasStatsCardView stats={{ total: 0, active: 0, inactive: 0 }} />);
+    render(<NasStatsCardView stats={{ total: 0, active: 0, inactive: 0, by_type: [] }} />);
 
     expect(screen.getByText("0 of 0 active")).toBeTruthy();
     expect(screen.getAllByText("0")).toHaveLength(3);

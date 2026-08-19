@@ -302,10 +302,16 @@ export type NasDevice = {
   created_at: string;
 };
 
+export type NasDeviceTypeCount = {
+  nas_type: string;
+  count: number;
+};
+
 export type NasDeviceStats = {
   total: number;
   active: number;
   inactive: number;
+  by_type: NasDeviceTypeCount[];
 };
 
 export async function getNasDevices(): Promise<{ devices: NasDevice[]; stats: NasDeviceStats }> {

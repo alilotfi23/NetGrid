@@ -37,15 +37,27 @@ async def list_nas_devices(
     return list(result.scalars().all()), int(total)
 
 
-async def get_nas_device_stats(session: AsyncSession) -> tuple[int, int, int]:
-    """Global NAS device counts: (total, active, inactive)."""
+async def get_nas_device_stats(
+    session: AsyncSession,
+) -> tuple[int, int, int, list[tuple[str, int]]]:
+    """Global NAS device counts: (total, active, inactive, by_type).
+
+    by_type is [(nas_type, count)] sorted by count descending, so the
+    dashboard's breakdown card shows the most common vendor type first.
+    """
     active = (
         await session.execute(
             select(func.count()).select_from(NasDevice).where(NasDevice.is_active.is_(True))
         )
     ).scalar_one()
     total = (await session.execute(select(func.count()).select_from(NasDevice))).scalar_one()
-    return int(total), int(active), int(total - active)
+    type_rows = await session.execute(
+        select(NasDevice.nas_type, func.count())
+        .group_by(NasDevice.nas_type)
+        .order_by(func.count().desc(), NasDevice.nas_type)
+    )
+    by_type = [(nas_type, int(count)) for nas_type, count in type_rows.all()]
+    return int(total), int(active), int(total - active), by_type
 
 
 async def get_nas_device_or_404(session: AsyncSession, nas_device_id: int) -> NasDevice:

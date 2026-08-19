@@ -9,12 +9,20 @@ from app.core.pagination import Page
 NAME_PATTERN = r"^\S+$"
 
 
+class NasDeviceTypeCount(BaseModel):
+    """Devices grouped by nas_type for the by-type breakdown card."""
+
+    nas_type: str
+    count: int
+
+
 class NasDeviceStats(BaseModel):
     """Global NAS device counts for the dashboard summary card."""
 
     total: int
     active: int
     inactive: int
+    by_type: list[NasDeviceTypeCount]
 
 
 class NasDeviceOut(BaseModel):
