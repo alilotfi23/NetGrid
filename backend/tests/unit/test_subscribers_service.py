@@ -9,7 +9,7 @@ from app.core.exceptions import ConflictError, NotFoundError
 from app.core.security import hash_password
 from app.models.audit import AuditLog
 from app.models.plan import Plan
-from app.models.radius import RadCheck
+from app.models.radius import RadCheck, RadUserGroup
 from app.models.rbac import Admin
 from app.models.subscriber import Subscriber
 from app.services import subscribers as subscribers_service
@@ -275,3 +275,117 @@ async def test_delete_removes_profile_and_radius_rows(session):
         e.action == "delete" and e.resource == "subscribers" and e.resource_id == str(subscriber_id)
         for e in rows
     )
+
+
+async def _radusergroup_rows(session, username: str) -> list[RadUserGroup]:
+    return list(
+        (await session.execute(select(RadUserGroup).where(RadUserGroup.username == username)))
+        .scalars()
+        .all()
+    )
+
+
+async def test_create_with_plan_writes_radusergroup(session):
+    actor = await _seed_actor(session)
+    plan = await _seed_plan(session, "Starter")
+    subscriber = await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username="bob",
+        full_name="Bob",
+        password="radpass123",
+        plan_id=plan.id,
+    )
+    assert subscriber.plan_id == plan.id
+    memberships = await _radusergroup_rows(session, "bob")
+    assert len(memberships) == 1
+    assert memberships[0].groupname == plan.radius_group
+    assert memberships[0].priority == 1
+
+
+async def test_create_with_unknown_plan_404(session):
+    actor = await _seed_actor(session)
+    with pytest.raises(NotFoundError):
+        await subscribers_service.create_subscriber(
+            session,
+            actor_id=actor.id,
+            username="bob",
+            full_name="Bob",
+            password="radpass123",
+            plan_id=999,
+        )
+
+
+async def test_update_plan_switches_membership(session):
+    actor = await _seed_actor(session)
+    p1 = await _seed_plan(session, "Starter")
+    p2 = await _seed_plan(session, "Pro")
+    subscriber = await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username="bob",
+        full_name="Bob",
+        password="radpass123",
+        plan_id=p1.id,
+    )
+
+    await subscribers_service.update_subscriber(
+        session, subscriber, actor_id=actor.id, plan_id=p2.id
+    )
+    assert subscriber.plan_id == p2.id
+    memberships = await _radusergroup_rows(session, "bob")
+    assert [m.groupname for m in memberships] == [p2.radius_group]
+
+
+async def test_update_plan_clear_removes_membership(session):
+    actor = await _seed_actor(session)
+    plan = await _seed_plan(session, "Starter")
+    subscriber = await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username="bob",
+        full_name="Bob",
+        password="radpass123",
+        plan_id=plan.id,
+    )
+
+    await subscribers_service.update_subscriber(
+        session, subscriber, actor_id=actor.id, plan_id=None
+    )
+    assert subscriber.plan_id is None
+    assert await _radusergroup_rows(session, "bob") == []
+
+
+async def test_update_plan_unknown_404_leaves_membership_untouched(session):
+    actor = await _seed_actor(session)
+    plan = await _seed_plan(session, "Starter")
+    subscriber = await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username="bob",
+        full_name="Bob",
+        password="radpass123",
+        plan_id=plan.id,
+    )
+    with pytest.raises(NotFoundError):
+        await subscribers_service.update_subscriber(
+            session, subscriber, actor_id=actor.id, plan_id=999
+        )
+    # validation happens before the membership swap, so nothing was torn down
+    memberships = await _radusergroup_rows(session, "bob")
+    assert [m.groupname for m in memberships] == [plan.radius_group]
+
+
+async def test_delete_removes_radusergroup(session):
+    actor = await _seed_actor(session)
+    plan = await _seed_plan(session, "Starter")
+    subscriber = await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username="bob",
+        full_name="Bob",
+        password="radpass123",
+        plan_id=plan.id,
+    )
+    await subscribers_service.delete_subscriber(session, subscriber, actor.id)
+    assert await _radusergroup_rows(session, "bob") == []

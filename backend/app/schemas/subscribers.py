@@ -66,6 +66,7 @@ class SubscriberCreate(BaseModel):
     phone: str | None = Field(default=None, max_length=32)
     password: str = Field(min_length=8, max_length=128)
     status: SubscriberStatus = "active"
+    plan_id: int | None = None  # Phase 6: writes radusergroup on assignment
     notes: str | None = Field(default=None, max_length=2000)
 
 
@@ -76,4 +77,5 @@ class SubscriberUpdate(BaseModel):
     phone: str | None = Field(default=None, max_length=32)
     password: str | None = Field(default=None, min_length=8, max_length=128)
     status: SubscriberStatus | None = None
+    plan_id: int | None = None  # Phase 6: set to switch plans, null to clear
     notes: str | None = Field(default=None, max_length=2000)

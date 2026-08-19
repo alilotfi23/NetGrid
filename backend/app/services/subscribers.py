@@ -8,15 +8,22 @@ subscriber cannot authenticate. `plan_id` is deliberately not touched here —
 plan assignment writes `radusergroup` and arrives with Phase 6.
 """
 
+from typing import cast
+
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.plan import Plan
-from app.models.radius import RadCheck
+from app.models.radius import RadCheck, RadUserGroup
 from app.models.subscriber import Subscriber
 from app.services import audit as audit_service
+from app.services import plans as plans_service
+
+# Sentinel distinguishing "plan_id not provided" from "plan_id explicitly
+# cleared" (None) in update_subscriber.
+_UNSET: object = object()
 
 RAD_PASSWORD_ATTRIBUTE = "Cleartext-Password"
 RAD_AUTH_TYPE_ATTRIBUTE = "Auth-Type"
@@ -74,8 +81,14 @@ async def create_subscriber(
     phone: str | None = None,
     status: str = ACTIVE_STATUS,
     notes: str | None = None,
+    plan_id: int | None = None,
 ) -> Subscriber:
-    """Create the profile row and its radcheck credential rows in one transaction."""
+    """Create the profile row and its radcheck/radusergroup rows in one transaction."""
+    # resolve the plan before adding anything, so an unknown plan_id surfaces
+    # as a 404 instead of a foreign-key IntegrityError at flush time
+    plan = None
+    if plan_id is not None:
+        plan = await plans_service.get_plan_or_404(session, plan_id)
     subscriber = Subscriber(
         username=username,
         full_name=full_name,
@@ -83,6 +96,7 @@ async def create_subscriber(
         phone=phone,
         status=status,
         notes=notes,
+        plan_id=plan_id,
     )
     session.add(subscriber)
     session.add(
@@ -95,6 +109,8 @@ async def create_subscriber(
     )
     if status != ACTIVE_STATUS:
         session.add(_reject_check(username))
+    if plan is not None:
+        session.add(RadUserGroup(username=username, groupname=plan.radius_group, priority=1))
     await _commit_or_conflict(session, "Username already exists")
     await audit_service.record_audit(
         session,
@@ -162,8 +178,13 @@ async def update_subscriber(
     password: str | None = None,
     status: str | None = None,
     notes: str | None = None,
+    plan_id: int | None | object = _UNSET,
 ) -> Subscriber:
-    """Apply profile changes; password and status changes sync radcheck rows."""
+    """Apply profile changes; password/status/plan changes sync rad* rows.
+
+    `plan_id` is a sentinel field: pass an int to assign/switch plans, None
+    to clear the plan, or omit it to leave the assignment untouched.
+    """
     changed: list[str] = []
     if full_name is not None and full_name != subscriber.full_name:
         subscriber.full_name = full_name
@@ -184,6 +205,21 @@ async def update_subscriber(
         subscriber.status = status
         await _set_reject(session, subscriber.username, reject=status != ACTIVE_STATUS)
         changed.append("status")
+    if plan_id is not _UNSET and plan_id != subscriber.plan_id:
+        if plan_id is None:
+            subscriber.plan_id = None
+            new_group: str | None = None
+        else:
+            new_plan = await plans_service.get_plan_or_404(session, cast(int, plan_id))
+            subscriber.plan_id = new_plan.id
+            new_group = new_plan.radius_group
+        # one plan per subscriber: replace any existing membership row
+        await session.execute(
+            delete(RadUserGroup).where(RadUserGroup.username == subscriber.username)
+        )
+        if new_group is not None:
+            session.add(RadUserGroup(username=subscriber.username, groupname=new_group, priority=1))
+        changed.append("plan_id")
 
     if changed:
         await _commit_or_conflict(session, "Username already exists")
@@ -199,10 +235,11 @@ async def update_subscriber(
 
 
 async def delete_subscriber(session: AsyncSession, subscriber: Subscriber, actor_id: int) -> None:
-    """Delete the profile and every radcheck row for its username in one transaction."""
+    """Delete the profile and its radcheck/radusergroup rows in one transaction."""
     username = subscriber.username
     subscriber_id = subscriber.id
     await session.execute(delete(RadCheck).where(RadCheck.username == username))
+    await session.execute(delete(RadUserGroup).where(RadUserGroup.username == username))
     await session.delete(subscriber)
     await session.commit()
     await audit_service.record_audit(
