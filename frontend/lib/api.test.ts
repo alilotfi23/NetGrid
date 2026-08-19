@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createPlan, getPlans, getSubscriberStats, loadSubscriberStats } from "./api";
+import {
+  createPlan,
+  getPlans,
+  getSubscriberStats,
+  getSubscribers,
+  loadSubscriberHistory,
+  loadSubscribers,
+  loadSubscriberSessions,
+  loadSubscriberStats,
+} from "./api";
 
 const STATS = {
   active: 2,
@@ -134,6 +143,95 @@ describe("plan helpers", () => {
       status: 409,
       code: "CONFLICT",
       message: "Plan name or radius group already exists",
+    });
+  });
+});
+
+describe("subscriber helpers", () => {
+  const SUBSCRIBER = {
+    id: 7,
+    username: "bob",
+    full_name: "Bob Subscriber",
+    email: "bob@netgrid.local",
+    phone: null,
+    status: "active",
+    plan_id: 1,
+    notes: null,
+    created_at: "2026-08-19T00:00:00",
+  };
+  const HISTORY = [
+    {
+      id: 12,
+      action: "update",
+      metadata_: { fields: ["status"], status_from: "active", status_to: "suspended" },
+      created_at: "2026-08-19T01:00:00",
+    },
+  ];
+  const SESSION = {
+    id: 3,
+    username: "bob",
+    nasipaddress: "192.168.0.10",
+    acctstarttime: "2026-08-19T02:00:00Z",
+    acctsessiontime: 3600,
+    acctinputoctets: 1048576,
+    acctoutputoctets: 2097152,
+    framedipaddress: "10.0.0.5",
+  };
+
+  it("getSubscribers returns the paginated items", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({
+      ok: true,
+      json: async () => ({ items: [SUBSCRIBER], total: 1, page: 1, page_size: 100 }),
+    });
+
+    await expect(getSubscribers()).resolves.toEqual([SUBSCRIBER]);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/subscribers?page_size=100",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("loadSubscribers returns an error result instead of throwing", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({ ok: false, status: 403 });
+    expect(await loadSubscribers()).toEqual({
+      ok: false,
+      error: "request failed: HTTP 403",
+    });
+  });
+
+  it("loadSubscriberHistory fetches the profile history endpoint", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({ ok: true, json: async () => HISTORY });
+
+    expect(await loadSubscriberHistory(7)).toEqual({ ok: true, history: HISTORY });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/subscribers/7/history",
+      expect.anything(),
+    );
+  });
+
+  it("loadSubscriberSessions fetches the live sessions endpoint", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({ ok: true, json: async () => [SESSION] });
+
+    expect(await loadSubscriberSessions(7)).toEqual({ ok: true, sessions: [SESSION] });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/subscribers/7/sessions",
+      expect.anything(),
+    );
+  });
+
+  it("loadSubscriberSessions surfaces backend errors", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({ ok: false, status: 404 });
+    expect(await loadSubscriberSessions(999)).toEqual({
+      ok: false,
+      error: "request failed: HTTP 404",
     });
   });
 });

@@ -168,3 +168,100 @@ export async function updatePlan(id: number, payload: unknown): Promise<Plan> {
   });
   return (await res.json()) as Plan;
 }
+
+export type Subscriber = {
+  id: number;
+  username: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  status: string;
+  plan_id: number | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type SubscriberHistoryEntry = {
+  id: number;
+  action: string;
+  metadata_: { fields?: string[]; status_from?: string; status_to?: string; username?: string } | null;
+  created_at: string;
+};
+
+export type LiveSession = {
+  id: number;
+  username: string | null;
+  nasipaddress: string | null;
+  acctstarttime: string | null;
+  acctsessiontime: number | null;
+  acctinputoctets: number | null;
+  acctoutputoctets: number | null;
+  framedipaddress: string | null;
+};
+
+export async function getSubscribers(): Promise<Subscriber[]> {
+  const res = await apiFetch("/api/v1/subscribers?page_size=100");
+  const page = (await res.json()) as { items: Subscriber[] };
+  return page.items;
+}
+
+export type SubscribersResult =
+  | { ok: true; subscribers: Subscriber[] }
+  | { ok: false; error: string };
+
+export async function loadSubscribers(): Promise<SubscribersResult> {
+  try {
+    return { ok: true, subscribers: await getSubscribers() };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+export async function getSubscriber(id: number): Promise<Subscriber> {
+  const res = await apiFetch(`/api/v1/subscribers/${id}`);
+  return (await res.json()) as Subscriber;
+}
+
+export type SubscriberResult = { ok: true; subscriber: Subscriber } | { ok: false; error: string };
+
+export async function loadSubscriber(id: number): Promise<SubscriberResult> {
+  try {
+    return { ok: true, subscriber: await getSubscriber(id) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+export async function getSubscriberHistory(id: number): Promise<SubscriberHistoryEntry[]> {
+  const res = await apiFetch(`/api/v1/subscribers/${id}/history`);
+  return (await res.json()) as SubscriberHistoryEntry[];
+}
+
+export type SubscriberHistoryResult =
+  | { ok: true; history: SubscriberHistoryEntry[] }
+  | { ok: false; error: string };
+
+export async function loadSubscriberHistory(id: number): Promise<SubscriberHistoryResult> {
+  try {
+    return { ok: true, history: await getSubscriberHistory(id) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+export async function getSubscriberSessions(id: number): Promise<LiveSession[]> {
+  const res = await apiFetch(`/api/v1/subscribers/${id}/sessions`);
+  return (await res.json()) as LiveSession[];
+}
+
+export type SubscriberSessionsResult =
+  | { ok: true; sessions: LiveSession[] }
+  | { ok: false; error: string };
+
+export async function loadSubscriberSessions(id: number): Promise<SubscriberSessionsResult> {
+  try {
+    return { ok: true, sessions: await getSubscriberSessions(id) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
