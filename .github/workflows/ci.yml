@@ -47,6 +47,64 @@ jobs:
       - name: Pytest
         run: pytest -q --ignore=tests/radius
 
+  smoke:
+    name: API smoke tests (invoices + sessions)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Postgres + Redis (compose)
+        working-directory: .
+        run: docker compose up -d --wait postgres redis
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install backend
+        run: pip install -e ".[dev]"
+
+      # The seed migrations create the superadmin/roles the smoke scripts log
+      # in as — without `alembic upgrade head` there is no login to test.
+      - name: Migrate database (seeds superadmin + roles)
+        run: alembic upgrade head
+
+      - name: Start backend (uvicorn, background)
+        run: |
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+            > /tmp/netgrid-uvicorn.log 2>&1 &
+          echo "$!" > /tmp/netgrid-uvicorn.pid
+
+      - name: Wait for backend health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/api/v1/health >/dev/null 2>&1; then
+              echo "backend healthy after ~$((i * 2))s"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "backend did not become healthy"
+          tail -50 /tmp/netgrid-uvicorn.log
+          exit 1
+
+      # Both scripts are self-cleaning (they delete what they seed), so they
+      # can run back to back against the same database.
+      - name: Smoke — invoices API
+        run: ./scripts/smoke_invoices.sh
+
+      - name: Smoke — sessions API
+        run: ./scripts/smoke_sessions.sh
+
+      - name: Dump backend log on failure
+        if: failure()
+        run: cat /tmp/netgrid-uvicorn.log
+
   radius:
     name: RADIUS integration (slow)
     runs-on: ubuntu-latest
