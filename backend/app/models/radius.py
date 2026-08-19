@@ -67,6 +67,29 @@ class RadUserGroup(Base):
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
+class Nas(Base):
+    """FreeRADIUS's nas table — the devices allowed to authenticate.
+
+    One row per NetGrid NasDevice, synced in the same transaction: nasname is
+    the device's ip_address, and secret is the *plaintext* shared secret
+    (FreeRADIUS must recover it for PAP/CHAP; the encrypted copy lives in
+    nas_devices.secret_encrypted). An inactive device has no row here, so
+    FreeRADIUS treats it as an unknown NAS and rejects it.
+    """
+
+    __tablename__ = "nas"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    nasname: Mapped[str] = mapped_column(Text, nullable=False)
+    shortname: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str] = mapped_column(Text, nullable=False, default="other")
+    ports: Mapped[int | None] = mapped_column(Integer)
+    secret: Mapped[str] = mapped_column(Text, nullable=False)
+    server: Mapped[str | None] = mapped_column(Text)
+    community: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+
+
 class RadAcct(Base):
     """Read-only mapping of FreeRADIUS's radacct table (session accounting).
 

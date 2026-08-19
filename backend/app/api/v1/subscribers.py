@@ -140,7 +140,6 @@ async def subscriber_sessions(
     return [LiveSessionOut.model_validate(s) for s in sessions]
 
 
-
 @router.patch("/{subscriber_id}", response_model=SubscriberOut)
 @limiter.limit(LIMITS["subscriber_write"])
 async def update_subscriber(

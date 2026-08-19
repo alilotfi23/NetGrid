@@ -39,6 +39,9 @@ LIMITS = {
     # Phase 6 plan endpoints: same tiers.
     "plan_read": "60/minute",
     "plan_write": "20/minute",
+    # Phase 7 NAS device endpoints: same tiers.
+    "nas_read": "60/minute",
+    "nas_write": "20/minute",
 }
 
 

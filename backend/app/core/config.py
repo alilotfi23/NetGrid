@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     jwt_access_ttl_minutes: int = 15
     jwt_refresh_ttl_days: int = 7
 
-    fernet_key: str = ""
+    # Fernet key for NAS shared secrets at rest (Phase 7). Like jwt_secret,
+    # the default is a dev-only bootstrap — set a real key in production.
+    fernet_key: str = "QPfl8PTxda-hLHz5q6dDShAEvWMb9YNpqk4lKwPxTAM="
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

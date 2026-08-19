@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from .admins import router as admins_router
 from .auth import router as auth_router
 from .health import router as health_router
+from .nas_devices import router as nas_devices_router
 from .plans import router as plans_router
 from .roles import permissions_router
 from .roles import router as roles_router
@@ -15,4 +16,5 @@ api_router.include_router(admins_router)
 api_router.include_router(roles_router)
 api_router.include_router(permissions_router)
 api_router.include_router(plans_router)
+api_router.include_router(nas_devices_router)
 api_router.include_router(subscribers_router)

@@ -1,10 +1,11 @@
-"""Password hashing (argon2) and JWT primitives for admin auth."""
+"""Password hashing (argon2), JWT primitives, and Fernet secret encryption."""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
 import jwt
+from cryptography.fernet import Fernet
 from jwt import InvalidTokenError
 from passlib.context import CryptContext
 
@@ -70,3 +71,25 @@ def decode_token(token: str, expected_type: str | None = None) -> dict[str, Any]
     if expected_type is not None and payload.get("type") != expected_type:
         raise UnauthorizedError("Invalid token type")
     return payload
+
+
+# ---------------------------------------------------------------------------
+# Fernet encryption for NAS shared secrets (Phase 7)
+# ---------------------------------------------------------------------------
+
+
+def _fernet() -> Fernet:
+    key = get_settings().fernet_key
+    if not key:
+        raise RuntimeError("FERNET_KEY is not configured")
+    return Fernet(key.encode())
+
+
+def encrypt_secret(plain: str) -> str:
+    """Encrypt a NAS shared secret at rest (Fernet, authenticated)."""
+    return _fernet().encrypt(plain.encode()).decode()
+
+
+def decrypt_secret(token: str) -> str:
+    """Decrypt a NAS shared secret back to plaintext (for the nas table)."""
+    return _fernet().decrypt(token.encode()).decode()

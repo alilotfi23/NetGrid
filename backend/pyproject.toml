@@ -16,6 +16,7 @@ dependencies = [
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
     "slowapi>=0.1.9",
+    "cryptography>=42.0",
 ]
 
 [project.optional-dependencies]
@@ -51,7 +52,7 @@ plugins = ["pydantic.mypy"]
 files = ["app"]
 
 [[tool.mypy.overrides]]
-module = ["passlib.*"]
+module = ["passlib.*", "cryptography.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
