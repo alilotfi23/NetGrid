@@ -29,3 +29,46 @@ export function formatDate(iso: string | null | undefined): string {
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString();
 }
+
+/**
+ * Format a date-only "YYYY-MM-DD" string as a readable day, e.g. "Mar 1, 2026".
+ * Falls back to formatDate's behavior for full timestamps and raw strings for
+ * garbage input. Date-only strings are parsed in local time to avoid UTC
+ * off-by-one rendering.
+ */
+export function formatDay(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (match) {
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  }
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleDateString("en-US");
+}
+
+/**
+ * Format a decimal amount (backend serializes Decimals as strings, e.g.
+ * "9.99") as a USD amount. Falls back to the raw string on garbage input.
+ */
+export function formatCurrency(value: string | number | null | undefined): string {
+  if (value == null) return "—";
+  const num = typeof value === "number" ? value : Number(value);
+  if (Number.isNaN(num)) return String(value);
+  return num.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+/** Format a "YYYY-MM" report bucket as a readable month, e.g. "Aug 2026". */
+export function formatMonth(month: string | null | undefined): string {
+  if (!month) return "—";
+  const match = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!match) return month;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, 1);
+  if (Number.isNaN(date.getTime())) return month;
+  return date.toLocaleString("en-US", { month: "short", year: "numeric" });
+}

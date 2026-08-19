@@ -6,6 +6,7 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/subscribers", label: "Subscribers" },
   { href: "/plans", label: "Plans" },
+  { href: "/invoices", label: "Invoices" },
   { href: "/nas-devices", label: "NAS Devices" },
   { href: "/sessions", label: "Sessions" },
 ];

@@ -6,18 +6,25 @@ import {
   createSubscriber,
   deleteNasDevice,
   disconnectSession,
+  generateInvoices,
+  getInvoices,
   getNasDevices,
+  getPaymentsReport,
   getPlans,
   getSessions,
   getSubscriberStats,
   getSubscribers,
+  loadInvoice,
+  loadInvoices,
   loadNasDevice,
   loadNasDevices,
+  loadPaymentsReport,
   loadSessions,
   loadSubscriberHistory,
   loadSubscribers,
   loadSubscriberSessions,
   loadSubscriberStats,
+  recordPayment,
   rotateNasDeviceSecret,
   updateNasDevice,
   updateSubscriber,
@@ -535,5 +542,157 @@ describe("NAS device helpers", () => {
     expect(url).toBe("http://localhost:8000/api/v1/nas-devices/3/rotate-secret");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual({ secret: "new-secret-99" });
+  });
+});
+
+describe("invoice helpers", () => {
+  const INVOICE = {
+    id: 12,
+    subscriber_id: 7,
+    subscriber_username: "bob",
+    plan_name: "Starter",
+    period_start: "2026-03-01",
+    period_end: "2026-03-30",
+    amount: "10.00",
+    status: "issued",
+    issued_at: "2026-03-01T00:00:00",
+    due_at: "2026-03-30",
+    paid_at: null,
+    payments: [],
+  };
+  const STATS = {
+    issued: 1,
+    paid: 0,
+    overdue: 0,
+    outstanding_amount: "10.00",
+  };
+  const REPORT = {
+    items: [
+      { month: "2026-03", method: "cash", revenue: "10.00", count: 1 },
+      { month: "2026-02", method: "bank_transfer", revenue: "25.00", count: 1 },
+    ],
+    total_revenue: "35.00",
+  };
+
+  it("getInvoices returns the paginated items plus global stats", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({ items: [INVOICE], total: 1, page: 1, page_size: 100, stats: STATS }),
+    });
+
+    await expect(getInvoices()).resolves.toEqual({ invoices: [INVOICE], stats: STATS });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/invoices?page_size=100",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("getInvoices passes the status filter through to the API", async () => {
+    mockFetch({ ok: true, json: async () => ({ items: [], stats: STATS }) });
+
+    await getInvoices({ status: "overdue" });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/invoices?page_size=100&status=overdue",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("loadInvoices returns invoices and stats on success", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({ items: [INVOICE], total: 1, page: 1, page_size: 100, stats: STATS }),
+    });
+
+    await expect(loadInvoices()).resolves.toEqual({ ok: true, invoices: [INVOICE], stats: STATS });
+  });
+
+  it("loadInvoices returns an error result instead of throwing", async () => {
+    mockFetch({ ok: false, status: 403 });
+    expect(await loadInvoices()).toEqual({
+      ok: false,
+      error: "request failed: HTTP 403",
+    });
+  });
+
+  it("loadInvoice fetches a single invoice by id", async () => {
+    mockFetch({ ok: true, json: async () => INVOICE });
+
+    expect(await loadInvoice(12)).toEqual({ ok: true, invoice: INVOICE });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/invoices/12",
+      expect.anything(),
+    );
+  });
+
+  it("getPaymentsReport fetches the report without a year param", async () => {
+    mockFetch({ ok: true, json: async () => REPORT });
+
+    await expect(getPaymentsReport()).resolves.toEqual(REPORT);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/invoices/report",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("getPaymentsReport passes the year filter through to the API", async () => {
+    mockFetch({ ok: true, json: async () => REPORT });
+
+    await getPaymentsReport(2026);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/invoices/report?year=2026",
+      expect.anything(),
+    );
+  });
+
+  it("loadPaymentsReport returns an error result instead of throwing", async () => {
+    mockFetch({ ok: false, status: 403 });
+    expect(await loadPaymentsReport()).toEqual({
+      ok: false,
+      error: "request failed: HTTP 403",
+    });
+  });
+
+  it("generateInvoices POSTs an empty payload to the generate endpoint", async () => {
+    mockFetch({ ok: true, json: async () => ({ created: 3 }) });
+
+    await expect(generateInvoices()).resolves.toEqual({ created: 3 });
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/invoices/generate");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({});
+  });
+
+  it("recordPayment POSTs the payment to the invoice endpoint", async () => {
+    const payment = {
+      id: 1,
+      invoice_id: 12,
+      amount: "10.00",
+      method: "cash",
+      reference: null,
+      status: "completed",
+      created_at: "2026-03-05T00:00:00",
+    };
+    mockFetch({
+      ok: true,
+      status: 201,
+      json: async () => ({ payment, invoice: { ...INVOICE, status: "paid" } }),
+    });
+
+    const result = await recordPayment(12, { amount: "10.00", method: "cash" });
+    expect(result.payment).toEqual(payment);
+    expect(result.invoice.status).toBe("paid");
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/invoices/12/payments");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ amount: "10.00", method: "cash" });
   });
 });

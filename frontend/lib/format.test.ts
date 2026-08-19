@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { formatBytes, formatDate, formatDuration } from "./format";
+import {
+  formatBytes,
+  formatCurrency,
+  formatDate,
+  formatDay,
+  formatDuration,
+  formatMonth,
+} from "./format";
 
 describe("formatBytes", () => {
   it("formats null as a dash", () => {
@@ -39,5 +46,56 @@ describe("formatDate", () => {
   it("formats an ISO timestamp", () => {
     const out = formatDate("2026-01-01T12:00:00Z");
     expect(out).toContain("2026");
+  });
+});
+
+describe("formatCurrency", () => {
+  it("formats null as a dash", () => {
+    expect(formatCurrency(null)).toBe("—");
+    expect(formatCurrency(undefined)).toBe("—");
+  });
+
+  it("formats decimal strings and numbers as USD", () => {
+    expect(formatCurrency("9.99")).toBe("$9.99");
+    expect(formatCurrency("1234.50")).toBe("$1,234.50");
+    expect(formatCurrency(0)).toBe("$0.00");
+  });
+
+  it("falls back to the raw string on garbage input", () => {
+    expect(formatCurrency("abc")).toBe("abc");
+  });
+});
+
+describe("formatDay", () => {
+  it("formats null as a dash", () => {
+    expect(formatDay(null)).toBe("—");
+  });
+
+  it("formats a date-only string in local time", () => {
+    const out = formatDay("2026-03-01");
+    expect(out).toContain("Mar");
+    expect(out).toContain("1");
+    expect(out).toContain("2026");
+  });
+
+  it("handles full timestamps and garbage defensively", () => {
+    const out = formatDay("2026-01-01T12:00:00Z");
+    expect(out).toContain("2026");
+    expect(formatDay("not-a-date")).toBe("not-a-date");
+  });
+});
+
+describe("formatMonth", () => {
+  it("formats null as a dash", () => {
+    expect(formatMonth(null)).toBe("—");
+  });
+
+  it("formats a YYYY-MM bucket", () => {
+    expect(formatMonth("2026-08")).toBe("Aug 2026");
+    expect(formatMonth("2026-01")).toBe("Jan 2026");
+  });
+
+  it("passes through non-bucket strings", () => {
+    expect(formatMonth("2026")).toBe("2026");
   });
 });

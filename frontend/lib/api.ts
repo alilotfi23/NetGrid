@@ -425,3 +425,126 @@ export async function rotateNasDeviceSecret(id: number, secret: string): Promise
   });
   return (await res.json()) as NasDevice;
 }
+
+export type Payment = {
+  id: number;
+  invoice_id: number;
+  amount: string;
+  method: string;
+  reference: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type Invoice = {
+  id: number;
+  subscriber_id: number;
+  subscriber_username: string | null;
+  plan_name: string;
+  period_start: string;
+  period_end: string;
+  amount: string;
+  status: string;
+  issued_at: string;
+  due_at: string;
+  paid_at: string | null;
+  payments: Payment[];
+};
+
+export type InvoiceStats = {
+  issued: number;
+  paid: number;
+  overdue: number;
+  outstanding_amount: string;
+};
+
+export type PaymentReportRow = {
+  month: string;
+  method: string;
+  revenue: string;
+  count: number;
+};
+
+export type PaymentReport = {
+  items: PaymentReportRow[];
+  total_revenue: string;
+};
+
+export async function getInvoices(
+  filters?: { status?: string },
+): Promise<{ invoices: Invoice[]; stats: InvoiceStats }> {
+  const params = new URLSearchParams({ page_size: "100" });
+  if (filters?.status) params.set("status", filters.status);
+  const res = await apiFetch(`/api/v1/invoices?${params.toString()}`);
+  const page = (await res.json()) as { items: Invoice[]; stats: InvoiceStats };
+  return { invoices: page.items, stats: page.stats };
+}
+
+export type InvoicesResult =
+  | { ok: true; invoices: Invoice[]; stats: InvoiceStats }
+  | { ok: false; error: string };
+
+export async function loadInvoices(filters?: { status?: string }): Promise<InvoicesResult> {
+  try {
+    const { invoices, stats } = await getInvoices(filters);
+    return { ok: true, invoices, stats };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+export async function getInvoice(id: number): Promise<Invoice> {
+  const res = await apiFetch(`/api/v1/invoices/${id}`);
+  return (await res.json()) as Invoice;
+}
+
+export type InvoiceResult = { ok: true; invoice: Invoice } | { ok: false; error: string };
+
+export async function loadInvoice(id: number): Promise<InvoiceResult> {
+  try {
+    return { ok: true, invoice: await getInvoice(id) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+export async function getPaymentsReport(year?: number): Promise<PaymentReport> {
+  const params = new URLSearchParams();
+  if (year != null) params.set("year", String(year));
+  const qs = params.toString();
+  const res = await apiFetch(`/api/v1/invoices/report${qs ? `?${qs}` : ""}`);
+  return (await res.json()) as PaymentReport;
+}
+
+export type PaymentsReportResult =
+  | { ok: true; report: PaymentReport }
+  | { ok: false; error: string };
+
+export async function loadPaymentsReport(year?: number): Promise<PaymentsReportResult> {
+  try {
+    return { ok: true, report: await getPaymentsReport(year) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+/** Manually run the monthly invoice job (idempotent). */
+export async function generateInvoices(payload?: unknown): Promise<{ created: number }> {
+  const res = await apiFetch("/api/v1/invoices/generate", {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+  return (await res.json()) as { created: number };
+}
+
+/** Record a completed payment against an invoice; flips it to paid when done. */
+export async function recordPayment(
+  invoiceId: number,
+  payload: unknown,
+): Promise<{ payment: Payment; invoice: Invoice }> {
+  const res = await apiFetch(`/api/v1/invoices/${invoiceId}/payments`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return (await res.json()) as { payment: Payment; invoice: Invoice };
+}
