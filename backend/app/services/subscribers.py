@@ -15,8 +15,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
+from app.models.audit import AuditLog
 from app.models.plan import Plan
-from app.models.radius import RadCheck, RadUserGroup
+from app.models.radius import RadAcct, RadCheck, RadUserGroup
 from app.models.subscriber import Subscriber
 from app.services import audit as audit_service
 from app.services import plans as plans_service
@@ -63,6 +64,48 @@ async def get_subscriber_or_404(session: AsyncSession, subscriber_id: int) -> Su
     if subscriber is None:
         raise NotFoundError("Subscriber not found")
     return subscriber
+
+
+async def list_subscriber_history(
+    session: AsyncSession, subscriber_id: int, limit: int = 20
+) -> list[AuditLog]:
+    """Recent audit events for a subscriber (create/update), newest first.
+
+    Status changes carry status_from/status_to in their metadata.
+    """
+    result = await session.execute(
+        select(AuditLog)
+        .where(AuditLog.resource == "subscribers", AuditLog.resource_id == str(subscriber_id))
+        .order_by(AuditLog.id.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def get_live_sessions(session: AsyncSession, username: str) -> list[dict[str, object]]:
+    """Active radacct sessions (acctstoptime IS NULL) for a username, newest first.
+
+    Inet columns are cast to str for JSON serialization.
+    """
+    result = await session.execute(
+        select(RadAcct)
+        .where(RadAcct.username == username, RadAcct.acctstoptime.is_(None))
+        .order_by(RadAcct.acctstarttime.desc())
+    )
+    rows = result.scalars().all()
+    return [
+        {
+            "id": row.id,
+            "username": row.username,
+            "nasipaddress": str(row.nasipaddress) if row.nasipaddress else None,
+            "acctstarttime": row.acctstarttime,
+            "acctsessiontime": row.acctsessiontime,
+            "acctinputoctets": row.acctinputoctets,
+            "acctoutputoctets": row.acctoutputoctets,
+            "framedipaddress": str(row.framedipaddress) if row.framedipaddress else None,
+        }
+        for row in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +244,9 @@ async def update_subscriber(
     if password is not None:
         await _upsert_password(session, subscriber.username, password)
         changed.append("password")
+    status_from: str | None = None
     if status is not None and status != subscriber.status:
+        status_from = subscriber.status
         subscriber.status = status
         await _set_reject(session, subscriber.username, reject=status != ACTIVE_STATUS)
         changed.append("status")
@@ -223,13 +268,17 @@ async def update_subscriber(
 
     if changed:
         await _commit_or_conflict(session, "Username already exists")
+        metadata_: dict[str, object] = {"username": subscriber.username, "fields": changed}
+        if "status" in changed:
+            metadata_["status_from"] = status_from
+            metadata_["status_to"] = subscriber.status
         await audit_service.record_audit(
             session,
             admin_id=actor_id,
             action="update",
             resource="subscribers",
             resource_id=str(subscriber.id),
-            metadata_={"username": subscriber.username, "fields": changed},
+            metadata_=metadata_,
         )
     return subscriber
 

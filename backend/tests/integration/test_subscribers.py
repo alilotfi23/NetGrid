@@ -1,5 +1,6 @@
 """Integration tests for the subscribers API (Phase 5)."""
 
+from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -7,7 +8,7 @@ from sqlalchemy import select
 from app.core.security import hash_password
 from app.models.audit import AuditLog
 from app.models.plan import Plan
-from app.models.radius import RadCheck
+from app.models.radius import RadAcct, RadCheck
 from app.models.rbac import Admin, Permission, Role
 from app.models.subscriber import Subscriber
 
@@ -344,3 +345,102 @@ async def test_audit_entries_written(client, session):
     assert ("create", "subscribers") in actions
     assert ("update", "subscribers") in actions
     assert ("delete", "subscribers") in actions
+
+
+async def test_history_endpoint_reports_status_transitions(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    resp = await client.post(
+        "/api/v1/subscribers",
+        json={"username": "bob", "full_name": "Bob", "password": "radpass123"},
+        headers=_auth(token),
+    )
+    subscriber_id = resp.json()["id"]
+    await client.patch(
+        f"/api/v1/subscribers/{subscriber_id}", json={"status": "suspended"}, headers=_auth(token)
+    )
+
+    resp = await client.get(f"/api/v1/subscribers/{subscriber_id}/history", headers=_auth(token))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # newest first: the status update, then the create
+    assert [e["action"] for e in body] == ["update", "create"]
+    update_event = body[0]
+    assert update_event["metadata_"]["status_from"] == "active"
+    assert update_event["metadata_"]["status_to"] == "suspended"
+    assert update_event["metadata_"]["fields"] == ["status"]
+    assert "created_at" in update_event
+
+
+async def test_history_404_unknown_subscriber(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    resp = await client.get("/api/v1/subscribers/999/history", headers=_auth(token))
+    assert resp.status_code == 404
+
+
+async def test_history_requires_read_permission(client, session):
+    await _seed_admin(session, "boss", ["plans:read"])
+    token = await _login(client)
+    resp = await client.get("/api/v1/subscribers/1/history", headers=_auth(token))
+    assert resp.status_code == 403
+
+
+async def test_sessions_endpoint_returns_open_sessions(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    resp = await client.post(
+        "/api/v1/subscribers",
+        json={"username": "bob", "full_name": "Bob", "password": "radpass123"},
+        headers=_auth(token),
+    )
+    subscriber_id = resp.json()["id"]
+
+    session.add_all(
+        [
+            RadAcct(
+                username="bob",
+                nasipaddress="192.168.0.10",
+                acctstarttime=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+                acctstoptime=None,
+                acctsessiontime=3600,
+                acctinputoctets=1048576,
+                acctoutputoctets=2097152,
+                framedipaddress="10.0.0.5",
+            ),
+            # closed session for the same subscriber must not appear
+            RadAcct(
+                username="bob",
+                nasipaddress="192.168.0.10",
+                acctstarttime=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+                acctstoptime=datetime(2026, 1, 1, 11, 0, tzinfo=UTC),
+                acctsessiontime=3600,
+            ),
+        ]
+    )
+    await session.commit()
+
+    resp = await client.get(f"/api/v1/subscribers/{subscriber_id}/sessions", headers=_auth(token))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body) == 1
+    session_out = body[0]
+    assert session_out["username"] == "bob"
+    assert session_out["nasipaddress"] == "192.168.0.10"
+    assert session_out["framedipaddress"] == "10.0.0.5"
+    assert session_out["acctsessiontime"] == 3600
+    assert session_out["acctinputoctets"] == 1048576
+
+
+async def test_sessions_endpoint_empty(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    resp = await client.post(
+        "/api/v1/subscribers",
+        json={"username": "bob", "full_name": "Bob", "password": "radpass123"},
+        headers=_auth(token),
+    )
+    subscriber_id = resp.json()["id"]
+    resp = await client.get(f"/api/v1/subscribers/{subscriber_id}/sessions", headers=_auth(token))
+    assert resp.status_code == 200
+    assert resp.json() == []

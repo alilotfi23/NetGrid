@@ -3,7 +3,7 @@ from .base import Base
 from .billing import Invoice, Payment
 from .nas import NasDevice
 from .plan import Plan
-from .radius import RadCheck, RadGroupCheck, RadGroupReply, RadUserGroup
+from .radius import RadAcct, RadCheck, RadGroupCheck, RadGroupReply, RadUserGroup
 from .rbac import Admin, Permission, Role, admin_roles, role_permissions
 from .subscriber import Subscriber
 
@@ -16,6 +16,7 @@ __all__ = [
     "Payment",
     "Permission",
     "Plan",
+    "RadAcct",
     "RadCheck",
     "RadGroupCheck",
     "RadGroupReply",

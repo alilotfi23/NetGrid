@@ -1,4 +1,5 @@
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.security import hash_password
 from app.models.rbac import Admin, Permission, Role
@@ -29,7 +30,16 @@ async def _login(client, username="boss", password="secret123"):
 
 
 async def _get_boss(session) -> Admin:
-    return (await session.execute(select(Admin).where(Admin.username == "boss"))).scalar_one()
+    # eager-load roles + permissions: the lazy variant can race into a sync
+    # lazy-load on the async session (MissingGreenlet) when the identity-map
+    # instance hasn't populated the collection yet
+    return (
+        await session.execute(
+            select(Admin)
+            .options(selectinload(Admin.roles).selectinload(Role.permissions))
+            .where(Admin.username == "boss")
+        )
+    ).scalar_one()
 
 
 async def test_me_allowed_with_permission(client, session):

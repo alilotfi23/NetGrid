@@ -45,6 +45,32 @@ class SubscriberStats(BaseModel):
     by_plan_status: list[PlanStatusCount] = Field(default_factory=list)
 
 
+class SubscriberHistoryEntry(BaseModel):
+    """One audit event on a subscriber, for the profile's history timeline."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    action: str
+    metadata_: dict[str, object] | None = None
+    created_at: datetime
+
+
+class LiveSessionOut(BaseModel):
+    """A live (open) radacct session, for the profile view."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str | None = None
+    nasipaddress: str | None = None
+    acctstarttime: datetime | None = None
+    acctsessiontime: int | None = None
+    acctinputoctets: int | None = None
+    acctoutputoctets: int | None = None
+    framedipaddress: str | None = None
+
+
 class SubscriberOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

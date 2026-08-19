@@ -10,7 +10,10 @@ credentials here (direct coupling); the tables are created by the
 FreeRADIUS initdb in dev/prod and by Base.metadata.create_all in tests.
 """
 
-from sqlalchemy import Integer, String, Text, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import BigInteger, DateTime, Integer, String, Text, UniqueConstraint
+from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -62,3 +65,24 @@ class RadUserGroup(Base):
     username: Mapped[str] = mapped_column(Text, nullable=False, default="")
     groupname: Mapped[str] = mapped_column(Text, nullable=False, default="")
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class RadAcct(Base):
+    """Read-only mapping of FreeRADIUS's radacct table (session accounting).
+
+    Only the columns the dashboard's live-session views need are mapped;
+    writes are never performed against this table. Inet columns surface as
+    ipaddress objects — cast to str at the service layer.
+    """
+
+    __tablename__ = "radacct"
+
+    id: Mapped[int] = mapped_column("radacctid", BigInteger, primary_key=True)
+    username: Mapped[str | None] = mapped_column(Text)
+    nasipaddress: Mapped[str | None] = mapped_column(INET)
+    acctstarttime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acctstoptime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    acctsessiontime: Mapped[int | None] = mapped_column(BigInteger)
+    acctinputoctets: Mapped[int | None] = mapped_column(BigInteger)
+    acctoutputoctets: Mapped[int | None] = mapped_column(BigInteger)
+    framedipaddress: Mapped[str | None] = mapped_column(INET)

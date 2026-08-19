@@ -1,5 +1,6 @@
 """Unit tests for the subscriber service (services/subscribers)."""
 
+from datetime import UTC
 from decimal import Decimal
 
 import pytest
@@ -9,7 +10,7 @@ from app.core.exceptions import ConflictError, NotFoundError
 from app.core.security import hash_password
 from app.models.audit import AuditLog
 from app.models.plan import Plan
-from app.models.radius import RadCheck, RadUserGroup
+from app.models.radius import RadAcct, RadCheck, RadUserGroup
 from app.models.rbac import Admin
 from app.models.subscriber import Subscriber
 from app.services import subscribers as subscribers_service
@@ -389,3 +390,73 @@ async def test_delete_removes_radusergroup(session):
     )
     await subscribers_service.delete_subscriber(session, subscriber, actor.id)
     assert await _radusergroup_rows(session, "bob") == []
+
+
+async def test_history_lists_events_newest_first_with_status_transition(session):
+    subscriber = await _create(session)
+    actor = await _seed_actor(session, "actor2")
+    await subscribers_service.update_subscriber(
+        session, subscriber, actor_id=actor.id, status="suspended"
+    )
+
+    history = await subscribers_service.list_subscriber_history(session, subscriber.id)
+    # create event first (oldest), then the status update
+    assert [e.action for e in history] == ["update", "create"]
+    update_event = history[0]
+    assert update_event.metadata_["status_from"] == "active"
+    assert update_event.metadata_["status_to"] == "suspended"
+    assert update_event.metadata_["fields"] == ["status"]
+
+
+async def test_history_only_includes_this_subscriber(session):
+    actor = await _seed_actor(session)
+    s1 = await subscribers_service.create_subscriber(
+        session, actor_id=actor.id, username="bob", full_name="Bob", password="radpass123"
+    )
+    s2 = await subscribers_service.create_subscriber(
+        session, actor_id=actor.id, username="alice", full_name="Alice", password="radpass123"
+    )
+    await subscribers_service.update_subscriber(
+        session, s2, actor_id=actor.id, full_name="Alice A."
+    )
+
+    history = await subscribers_service.list_subscriber_history(session, s1.id)
+    assert [e.action for e in history] == ["create"]
+
+
+async def _seed_session(session, username: str, *, open_: bool = True) -> RadAcct:
+    from datetime import datetime
+
+    row = RadAcct(
+        username=username,
+        nasipaddress="192.168.0.10",
+        acctstarttime=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        acctstoptime=None if open_ else datetime(2026, 1, 1, 13, 0, tzinfo=UTC),
+        acctsessiontime=3600,
+        acctinputoctets=1048576,
+        acctoutputoctets=2097152,
+        framedipaddress="10.0.0.5",
+    )
+    session.add(row)
+    await session.commit()
+    return row
+
+
+async def test_live_sessions_returns_open_sessions_for_username(session):
+    await _seed_session(session, "bob")
+    await _seed_session(session, "bob")
+    await _seed_session(session, "alice")
+
+    sessions = await subscribers_service.get_live_sessions(session, "bob")
+    assert len(sessions) == 2
+    for s in sessions:
+        assert s["username"] == "bob"
+        # inet columns surface as plain strings for JSON serialization
+        assert s["nasipaddress"] == "192.168.0.10"
+        assert s["framedipaddress"] == "10.0.0.5"
+        assert s["acctsessiontime"] == 3600
+
+
+async def test_live_sessions_excludes_closed_sessions(session):
+    await _seed_session(session, "bob", open_=False)
+    assert await subscribers_service.get_live_sessions(session, "bob") == []

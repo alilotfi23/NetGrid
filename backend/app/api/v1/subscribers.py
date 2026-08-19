@@ -16,7 +16,9 @@ from app.core.pagination import Page
 from app.core.rate_limit import LIMITS, limiter
 from app.models.rbac import Admin
 from app.schemas.subscribers import (
+    LiveSessionOut,
     SubscriberCreate,
+    SubscriberHistoryEntry,
     SubscriberOut,
     SubscriberStats,
     SubscriberUpdate,
@@ -98,6 +100,45 @@ async def get_subscriber(
     """GET /api/v1/subscribers/{id} — requires subscribers:read."""
     subscriber = await subscribers_service.get_subscriber_or_404(session, subscriber_id)
     return SubscriberOut.model_validate(subscriber)
+
+
+@router.get("/{subscriber_id}/history", response_model=list[SubscriberHistoryEntry])
+@limiter.limit(LIMITS["subscriber_read"])
+async def subscriber_history(
+    request: Request,
+    response: Response,
+    subscriber_id: int,
+    session: SessionDep,
+    _: Annotated[Admin, Depends(require_permission("subscribers:read"))],
+) -> list[SubscriberHistoryEntry]:
+    """GET /api/v1/subscribers/{id}/history — requires subscribers:read.
+
+    Audit-log events for the subscriber (create/update/delete), newest
+    first; status changes carry status_from/status_to in metadata.
+    """
+    await subscribers_service.get_subscriber_or_404(session, subscriber_id)
+    entries = await subscribers_service.list_subscriber_history(session, subscriber_id)
+    return [SubscriberHistoryEntry.model_validate(e) for e in entries]
+
+
+@router.get("/{subscriber_id}/sessions", response_model=list[LiveSessionOut])
+@limiter.limit(LIMITS["subscriber_read"])
+async def subscriber_sessions(
+    request: Request,
+    response: Response,
+    subscriber_id: int,
+    session: SessionDep,
+    _: Annotated[Admin, Depends(require_permission("subscribers:read"))],
+) -> list[LiveSessionOut]:
+    """GET /api/v1/subscribers/{id}/sessions — requires subscribers:read.
+
+    Live (open) radacct sessions for the subscriber's username, newest
+    first. Read-only slice of radacct; disconnect/CoA stays in Phase 9.
+    """
+    subscriber = await subscribers_service.get_subscriber_or_404(session, subscriber_id)
+    sessions = await subscribers_service.get_live_sessions(session, subscriber.username)
+    return [LiveSessionOut.model_validate(s) for s in sessions]
+
 
 
 @router.patch("/{subscriber_id}", response_model=SubscriberOut)
