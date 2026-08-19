@@ -36,6 +36,9 @@ LIMITS = {
     # Phase 5 subscriber endpoints: reads loose, writes moderate.
     "subscriber_read": "60/minute",
     "subscriber_write": "20/minute",
+    # Phase 6 plan endpoints: same tiers.
+    "plan_read": "60/minute",
+    "plan_write": "20/minute",
 }
 
 
