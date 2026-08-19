@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { NasStatsCardView } from "./nas-stats-card-view";
@@ -12,6 +12,13 @@ describe("NasStatsCardView", () => {
     expect(screen.getByText("3")).toBeTruthy();
     expect(screen.getByText("2")).toBeTruthy();
     expect(screen.getByText("3 of 5 active")).toBeTruthy();
+  });
+
+  it("links the heading to the NAS devices list", () => {
+    render(<NasStatsCardView stats={{ total: 5, active: 3, inactive: 2, by_type: [] }} />);
+
+    const link = within(screen.getByRole("heading", { name: "NAS Devices" })).getByRole("link");
+    expect(link.getAttribute("href")).toBe("/nas-devices");
   });
 
   it("renders zeroes for an empty inventory", () => {

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { NasDeviceStats } from "@/lib/api";
 
 const TILES = [
@@ -36,7 +38,14 @@ export function NasStatsCardView({
       className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
     >
       <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">NAS Devices</h2>
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          <Link
+            href="/nas-devices"
+            className="transition-colors hover:text-indigo-600 dark:hover:text-indigo-400"
+          >
+            NAS Devices
+          </Link>
+        </h2>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
           {stats.active} of {stats.total} active
         </span>

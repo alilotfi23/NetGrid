@@ -43,6 +43,13 @@ describe("StatsCardView", () => {
     expect(screen.getByText("No plan")).toBeTruthy();
   });
 
+  it("links the heading to the subscribers list", () => {
+    render(<StatsCardView stats={STATS} />);
+
+    const link = within(screen.getByRole("heading", { name: "Subscribers" })).getByRole("link");
+    expect(link.getAttribute("href")).toBe("/subscribers");
+  });
+
   it("shows an empty message when there are no plans", () => {
     render(<StatsCardView stats={{ ...STATS, total: 0, by_plan: [] }} />);
 
