@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createPlan,
+  createSubscriber,
   getPlans,
   getSubscriberStats,
   getSubscribers,
@@ -9,6 +10,7 @@ import {
   loadSubscribers,
   loadSubscriberSessions,
   loadSubscriberStats,
+  updateSubscriber,
 } from "./api";
 
 const STATS = {
@@ -234,5 +236,39 @@ describe("subscriber helpers", () => {
       ok: false,
       error: "request failed: HTTP 404",
     });
+  });
+
+  it("createSubscriber POSTs the payload and returns the created subscriber", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({ ok: true, status: 201, json: async () => SUBSCRIBER });
+
+    const created = await createSubscriber({
+      username: "bob",
+      full_name: "Bob Subscriber",
+      password: "radpass123",
+      plan_id: 1,
+    });
+    expect(created).toEqual(SUBSCRIBER);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/subscribers");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      username: "bob",
+      full_name: "Bob Subscriber",
+      password: "radpass123",
+      plan_id: 1,
+    });
+  });
+
+  it("updateSubscriber PATCHes to the subscriber endpoint", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({ ok: true, json: async () => ({ ...SUBSCRIBER, status: "suspended" }) });
+
+    const updated = await updateSubscriber(7, { status: "suspended" });
+    expect(updated.status).toBe("suspended");
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/subscribers/7");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({ status: "suspended" });
   });
 });

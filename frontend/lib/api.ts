@@ -255,6 +255,23 @@ export async function getSubscriberSessions(id: number): Promise<LiveSession[]> 
   return (await res.json()) as LiveSession[];
 }
 
+/** Mutations — called from route handlers (never from the browser directly). */
+export async function createSubscriber(payload: unknown): Promise<Subscriber> {
+  const res = await apiFetch("/api/v1/subscribers", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return (await res.json()) as Subscriber;
+}
+
+export async function updateSubscriber(id: number, payload: unknown): Promise<Subscriber> {
+  const res = await apiFetch(`/api/v1/subscribers/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return (await res.json()) as Subscriber;
+}
+
 export type SubscriberSessionsResult =
   | { ok: true; sessions: LiveSession[] }
   | { ok: false; error: string };

@@ -32,12 +32,22 @@ export default async function SubscribersPage() {
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
       <Nav />
       <div className="mt-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Subscribers
-        </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Subscriber accounts, status, and plan assignments.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+              Subscribers
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+              Subscriber accounts, status, and plan assignments.
+            </p>
+          </div>
+          <Link
+            href="/subscribers/new"
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+          >
+            New subscriber
+          </Link>
+        </div>
 
         {!subs.ok ? (
           <p className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">

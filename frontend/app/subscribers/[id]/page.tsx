@@ -92,11 +92,17 @@ export default async function SubscriberProfilePage({
         >
           ← All subscribers
         </Link>
-        <div className="mt-2 flex items-center gap-3">
+        <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
             {subscriber.full_name}
           </h1>
           {statusBadge(subscriber.status)}
+          <Link
+            href={`/subscribers/${subscriber.id}/edit`}
+            className="ml-auto rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            Edit
+          </Link>
         </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">@{subscriber.username}</p>
 
