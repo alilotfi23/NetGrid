@@ -4,7 +4,17 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.pagination import Page
+
 NAME_PATTERN = r"^\S+$"
+
+
+class NasDeviceStats(BaseModel):
+    """Global NAS device counts for the dashboard summary card."""
+
+    total: int
+    active: int
+    inactive: int
 
 
 class NasDeviceOut(BaseModel):
@@ -27,6 +37,16 @@ class NasDeviceOut(BaseModel):
     description: str | None = None
     is_active: bool
     created_at: datetime
+
+
+class NasDeviceList(Page[NasDeviceOut]):
+    """The list response — the paginated page plus global counts.
+
+    Stats are global (all devices), not scoped to the page, so the dashboard
+    card stays correct regardless of pagination.
+    """
+
+    stats: NasDeviceStats
 
 
 class NasDeviceCreate(BaseModel):

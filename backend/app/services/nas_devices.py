@@ -37,6 +37,17 @@ async def list_nas_devices(
     return list(result.scalars().all()), int(total)
 
 
+async def get_nas_device_stats(session: AsyncSession) -> tuple[int, int, int]:
+    """Global NAS device counts: (total, active, inactive)."""
+    active = (
+        await session.execute(
+            select(func.count()).select_from(NasDevice).where(NasDevice.is_active.is_(True))
+        )
+    ).scalar_one()
+    total = (await session.execute(select(func.count()).select_from(NasDevice))).scalar_one()
+    return int(total), int(active), int(total - active)
+
+
 async def get_nas_device_or_404(session: AsyncSession, nas_device_id: int) -> NasDevice:
     device = (
         await session.execute(select(NasDevice).where(NasDevice.id == nas_device_id))

@@ -302,17 +302,26 @@ export type NasDevice = {
   created_at: string;
 };
 
-export async function getNasDevices(): Promise<NasDevice[]> {
+export type NasDeviceStats = {
+  total: number;
+  active: number;
+  inactive: number;
+};
+
+export async function getNasDevices(): Promise<{ devices: NasDevice[]; stats: NasDeviceStats }> {
   const res = await apiFetch("/api/v1/nas-devices?page_size=100");
-  const page = (await res.json()) as { items: NasDevice[] };
-  return page.items;
+  const page = (await res.json()) as { items: NasDevice[]; stats: NasDeviceStats };
+  return { devices: page.items, stats: page.stats };
 }
 
-export type NasDevicesResult = { ok: true; devices: NasDevice[] } | { ok: false; error: string };
+export type NasDevicesResult =
+  | { ok: true; devices: NasDevice[]; stats: NasDeviceStats }
+  | { ok: false; error: string };
 
 export async function loadNasDevices(): Promise<NasDevicesResult> {
   try {
-    return { ok: true, devices: await getNasDevices() };
+    const { devices, stats } = await getNasDevices();
+    return { ok: true, devices, stats };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
   }

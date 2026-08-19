@@ -1,4 +1,5 @@
 import { Nav } from "@/components/nav";
+import { NasStatsCard } from "@/components/nas-stats-card";
 import { StatsCard } from "@/components/stats-card";
 
 // The dashboard shows live counts fetched with a runtime token — never
@@ -16,7 +17,10 @@ export default function Dashboard() {
             Dashboard
           </h1>
         </header>
-        <StatsCard />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <StatsCard />
+          <NasStatsCard />
+        </div>
       </div>
     </main>
   );

@@ -13,13 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_permission
 from app.core.db import get_session
-from app.core.pagination import Page
 from app.core.rate_limit import LIMITS, limiter
 from app.models.rbac import Admin
 from app.schemas.nas_devices import (
     NasDeviceCreate,
+    NasDeviceList,
     NasDeviceOut,
     NasDeviceSecretRotate,
+    NasDeviceStats,
     NasDeviceUpdate,
 )
 from app.services import nas_devices as nas_devices_service
@@ -29,7 +30,7 @@ router = APIRouter(prefix="/nas-devices", tags=["nas-devices"])
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-@router.get("", response_model=Page[NasDeviceOut])
+@router.get("", response_model=NasDeviceList)
 @limiter.limit(LIMITS["nas_read"])
 async def list_nas_devices(
     request: Request,
@@ -39,14 +40,22 @@ async def list_nas_devices(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     q: str | None = Query(None, max_length=64),
-) -> Page[NasDeviceOut]:
-    """GET /api/v1/nas-devices — requires nas_devices:read."""
+) -> NasDeviceList:
+    """GET /api/v1/nas-devices — requires nas_devices:read.
+
+    Returns the paginated page plus global `stats` (total/active/inactive)
+    for the dashboard summary card.
+    """
     items, total = await nas_devices_service.list_nas_devices(session, page, page_size, q)
-    return Page(
+    total_count, active_count, inactive_count = await nas_devices_service.get_nas_device_stats(
+        session
+    )
+    return NasDeviceList(
         items=[NasDeviceOut.model_validate(d) for d in items],
         total=total,
         page=page,
         page_size=page_size,
+        stats=NasDeviceStats(total=total_count, active=active_count, inactive=inactive_count),
     )
 
 

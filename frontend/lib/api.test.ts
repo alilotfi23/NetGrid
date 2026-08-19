@@ -296,13 +296,22 @@ describe("NAS device helpers", () => {
     created_at: "2026-08-19T00:00:00",
   };
 
-  it("getNasDevices returns the paginated items", async () => {
+  it("getNasDevices returns the paginated items plus global stats", async () => {
     mockFetch({
       ok: true,
-      json: async () => ({ items: [DEVICE], total: 1, page: 1, page_size: 100 }),
+      json: async () => ({
+        items: [DEVICE],
+        total: 1,
+        page: 1,
+        page_size: 100,
+        stats: { total: 1, active: 1, inactive: 0 },
+      }),
     });
 
-    await expect(getNasDevices()).resolves.toEqual([DEVICE]);
+    await expect(getNasDevices()).resolves.toEqual({
+      devices: [DEVICE],
+      stats: { total: 1, active: 1, inactive: 0 },
+    });
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/nas-devices?page_size=100",
       expect.objectContaining({
@@ -310,6 +319,25 @@ describe("NAS device helpers", () => {
         cache: "no-store",
       }),
     );
+  });
+
+  it("loadNasDevices returns devices and stats on success", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({
+        items: [DEVICE],
+        total: 1,
+        page: 1,
+        page_size: 100,
+        stats: { total: 1, active: 1, inactive: 0 },
+      }),
+    });
+
+    await expect(loadNasDevices()).resolves.toEqual({
+      ok: true,
+      devices: [DEVICE],
+      stats: { total: 1, active: 1, inactive: 0 },
+    });
   });
 
   it("loadNasDevices returns an error result instead of throwing", async () => {

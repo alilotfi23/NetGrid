@@ -94,6 +94,23 @@ async def test_get_nas_device_or_404(session):
         await nas_service.get_nas_device_or_404(session, 999)
 
 
+async def test_get_nas_device_stats(session):
+    actor = await _seed_actor(session)
+    assert await nas_service.get_nas_device_stats(session) == (0, 0, 0)
+
+    await _create(session, actor.id, name="r1", ip="192.168.0.1")
+    await _create(session, actor.id, name="r2", ip="192.168.0.2")
+    await _create(session, actor.id, name="r3", ip="192.168.0.3", is_active=False)
+    total, active, inactive = await nas_service.get_nas_device_stats(session)
+    assert (total, active, inactive) == (3, 2, 1)
+
+    # deactivating one flips the counts without changing the total
+    device = await nas_service.get_nas_device_or_404(session, 2)
+    await nas_service.update_nas_device(session, device, actor_id=actor.id, is_active=False)
+    total, active, inactive = await nas_service.get_nas_device_stats(session)
+    assert (total, active, inactive) == (3, 1, 2)
+
+
 async def test_list_nas_devices_paginates_and_filters(session):
     actor = await _seed_actor(session)
     for i in range(3):
