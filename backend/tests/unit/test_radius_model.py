@@ -7,7 +7,7 @@ from app.models.radius import RadCheck
 
 
 async def test_radcheck_defaults(session):
-    row = RadCheck(UserName="u1", Attribute="Cleartext-Password", Value="pw")
+    row = RadCheck(username="u1", attribute="Cleartext-Password", value="pw")
     session.add(row)
     await session.commit()
     assert row.id is not None
@@ -15,8 +15,8 @@ async def test_radcheck_defaults(session):
 
 
 async def test_radcheck_unique_username_attribute(session):
-    session.add(RadCheck(UserName="u1", Attribute="Cleartext-Password", op=":=", Value="a"))
+    session.add(RadCheck(username="u1", attribute="Cleartext-Password", op=":=", value="a"))
     await session.commit()
-    session.add(RadCheck(UserName="u1", Attribute="Cleartext-Password", op=":=", Value="b"))
+    session.add(RadCheck(username="u1", attribute="Cleartext-Password", op=":=", value="b"))
     with pytest.raises(IntegrityError):
         await session.commit()

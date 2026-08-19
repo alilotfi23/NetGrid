@@ -37,9 +37,9 @@ def _auth(token: str) -> dict[str, str]:
 
 
 async def _radcheck_rows(session, username: str, attribute: str | None = None) -> list[RadCheck]:
-    stmt = select(RadCheck).where(RadCheck.UserName == username)
+    stmt = select(RadCheck).where(RadCheck.username == username)
     if attribute is not None:
-        stmt = stmt.where(RadCheck.Attribute == attribute)
+        stmt = stmt.where(RadCheck.attribute == attribute)
     return list((await session.execute(stmt)).scalars().all())
 
 
@@ -123,7 +123,7 @@ async def test_superadmin_full_lifecycle(client, session):
     # radcheck carries the credential
     password_rows = await _radcheck_rows(session, "bob", "Cleartext-Password")
     assert len(password_rows) == 1
-    assert password_rows[0].Value == "radpass123"
+    assert password_rows[0].value == "radpass123"
 
     resp = await client.get("/api/v1/subscribers", headers=_auth(token))
     assert resp.status_code == 200
@@ -141,7 +141,7 @@ async def test_superadmin_full_lifecycle(client, session):
     assert resp.status_code == 200
     password_rows = await _radcheck_rows(session, "bob", "Cleartext-Password")
     assert len(password_rows) == 1
-    assert password_rows[0].Value == "newpass456"
+    assert password_rows[0].value == "newpass456"
 
     # suspend adds the Reject row; reactivate removes it
     resp = await client.patch(

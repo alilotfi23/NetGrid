@@ -86,10 +86,10 @@ async def create_subscriber(
     session.add(subscriber)
     session.add(
         RadCheck(
-            UserName=username,
-            Attribute=RAD_PASSWORD_ATTRIBUTE,
+            username=username,
+            attribute=RAD_PASSWORD_ATTRIBUTE,
             op=RAD_OP_SET,
-            Value=password,
+            value=password,
         )
     )
     if status != ACTIVE_STATUS:
@@ -116,22 +116,22 @@ async def _upsert_password(session: AsyncSession, username: str, password: str) 
     row = (
         await session.execute(
             select(RadCheck).where(
-                RadCheck.UserName == username,
-                RadCheck.Attribute == RAD_PASSWORD_ATTRIBUTE,
+                RadCheck.username == username,
+                RadCheck.attribute == RAD_PASSWORD_ATTRIBUTE,
             )
         )
     ).scalar_one_or_none()
     if row is None:
         session.add(
             RadCheck(
-                UserName=username,
-                Attribute=RAD_PASSWORD_ATTRIBUTE,
+                username=username,
+                attribute=RAD_PASSWORD_ATTRIBUTE,
                 op=RAD_OP_SET,
-                Value=password,
+                value=password,
             )
         )
     else:
-        row.Value = password
+        row.value = password
 
 
 async def _set_reject(session: AsyncSession, username: str, *, reject: bool) -> None:
@@ -139,8 +139,8 @@ async def _set_reject(session: AsyncSession, username: str, *, reject: bool) -> 
     row = (
         await session.execute(
             select(RadCheck).where(
-                RadCheck.UserName == username,
-                RadCheck.Attribute == RAD_AUTH_TYPE_ATTRIBUTE,
+                RadCheck.username == username,
+                RadCheck.attribute == RAD_AUTH_TYPE_ATTRIBUTE,
             )
         )
     ).scalar_one_or_none()
@@ -201,7 +201,7 @@ async def delete_subscriber(session: AsyncSession, subscriber: Subscriber, actor
     """Delete the profile and every radcheck row for its username in one transaction."""
     username = subscriber.username
     subscriber_id = subscriber.id
-    await session.execute(delete(RadCheck).where(RadCheck.UserName == username))
+    await session.execute(delete(RadCheck).where(RadCheck.username == username))
     await session.delete(subscriber)
     await session.commit()
     await audit_service.record_audit(
@@ -244,10 +244,10 @@ async def get_subscriber_stats(session: AsyncSession) -> dict[str, int]:
 
 def _reject_check(username: str) -> RadCheck:
     return RadCheck(
-        UserName=username,
-        Attribute=RAD_AUTH_TYPE_ATTRIBUTE,
+        username=username,
+        attribute=RAD_AUTH_TYPE_ATTRIBUTE,
         op=RAD_OP_SET,
-        Value=RAD_REJECT_VALUE,
+        value=RAD_REJECT_VALUE,
     )
 
 

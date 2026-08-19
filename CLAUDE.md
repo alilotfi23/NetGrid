@@ -36,6 +36,8 @@ We use **direct coupling** (not a separate sync layer): FastAPI writes subscribe
 
 We do keep our own `subscribers` table (profile info, status, billing metadata) separate from `radcheck` — `radcheck` only holds what FreeRADIUS needs for auth (username + credential attribute). Join on username.
 
+- Phase 5 implementation: subscriber credentials are written straight to `radcheck` in the same transaction as the `subscribers` row — one `Cleartext-Password` check per username (op `:=`), plus an `Auth-Type := Reject` check whenever the subscriber's status is not `active` (`active` | `suspended` | `expired`). Usernames are immutable after creation (renaming would rewrite radcheck rows). Plan assignment writes `radusergroup` and lands with Phase 6; until then `subscribers.plan_id` stays NULL. The `Cleartext-Password` storage is deliberate: FreeRADIUS needs a recoverable secret for PAP/MSCHAPv2 against NAS devices (the standard FreeRADIUS idiom), and the credential never touches the `subscribers` table. Note: although `schema.sql` declares `radcheck` columns as `UserName`/`Attribute`/`Value` (mixed case, unquoted), PostgreSQL folds them to lowercase — the effective schema (and the `RadCheck` model) is `id, username, attribute, op, value`.
+
 ### Identity domains — do not conflate
 
 - **Admin users**: staff who log into the dashboard. JWT-based auth, governed by RBAC (see below).
@@ -236,7 +238,7 @@ At the start of a session, scan this list top-down and resume at the first unche
   - `app/core/exceptions.py` + FastAPI exception handlers implementing the pinned error shape
   - This phase exists so every resource built afterward is consistent — do not build Subscribers/Plans/etc. before this is settled
 
-- [ ] **Phase 5 — Subscribers CRUD + RADIUS credential coupling**
+- [x] **Phase 5 — Subscribers CRUD + RADIUS credential coupling**
   - Subscribers API (RBAC-gated: `subscribers:read/write/delete`)
   - Service-layer logic writing/updating `radcheck` in the same transaction as `subscribers` (direct coupling — see architecture decision)
   - Full unit + integration coverage, including that `radcheck` rows are created/updated/deleted correctly alongside `subscribers`

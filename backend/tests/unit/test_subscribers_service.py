@@ -16,9 +16,9 @@ RAD_AUTH_TYPE_ATTRIBUTE = subscribers_service.RAD_AUTH_TYPE_ATTRIBUTE
 
 
 async def _radcheck_rows(session, username: str, attribute: str | None = None) -> list[RadCheck]:
-    stmt = select(RadCheck).where(RadCheck.UserName == username)
+    stmt = select(RadCheck).where(RadCheck.username == username)
     if attribute is not None:
-        stmt = stmt.where(RadCheck.Attribute == attribute)
+        stmt = stmt.where(RadCheck.attribute == attribute)
     return list((await session.execute(stmt)).scalars().all())
 
 
@@ -78,9 +78,9 @@ async def test_create_writes_profile_and_radius_password(session):
 
     rows = await _radcheck_rows(session, "bob")
     assert len(rows) == 1
-    assert rows[0].Attribute == RAD_PASSWORD_ATTRIBUTE
+    assert rows[0].attribute == RAD_PASSWORD_ATTRIBUTE
     assert rows[0].op == ":="
-    assert rows[0].Value == "radpass123"
+    assert rows[0].value == "radpass123"
 
 
 async def test_create_suspended_writes_reject(session):
@@ -94,9 +94,9 @@ async def test_create_suspended_writes_reject(session):
         status="suspended",
     )
     rows = await _radcheck_rows(session, "bob")
-    assert {r.Attribute for r in rows} == {RAD_PASSWORD_ATTRIBUTE, RAD_AUTH_TYPE_ATTRIBUTE}
-    reject = next(r for r in rows if r.Attribute == RAD_AUTH_TYPE_ATTRIBUTE)
-    assert reject.Value == "Reject"
+    assert {r.attribute for r in rows} == {RAD_PASSWORD_ATTRIBUTE, RAD_AUTH_TYPE_ATTRIBUTE}
+    reject = next(r for r in rows if r.attribute == RAD_AUTH_TYPE_ATTRIBUTE)
+    assert reject.value == "Reject"
 
 
 async def test_create_duplicate_username_conflict(session):
@@ -173,7 +173,7 @@ async def test_update_password_upserts_radius_row(session):
     assert updated.username == "bob"
     rows = await _radcheck_rows(session, "bob", RAD_PASSWORD_ATTRIBUTE)
     assert len(rows) == 1  # upserted, not duplicated
-    assert rows[0].Value == "newpass456"
+    assert rows[0].value == "newpass456"
 
 
 async def test_update_status_syncs_reject(session):
@@ -186,7 +186,7 @@ async def test_update_status_syncs_reject(session):
     )
     reject = await _radcheck_rows(session, "bob", RAD_AUTH_TYPE_ATTRIBUTE)
     assert len(reject) == 1
-    assert reject[0].Value == "Reject"
+    assert reject[0].value == "Reject"
 
     await subscribers_service.update_subscriber(
         session, subscriber, actor_id=actor.id, status="active"
@@ -202,7 +202,7 @@ async def test_update_profile_fields_leave_radius_untouched(session):
     )
     assert subscriber.full_name == "Robert"
     rows = await _radcheck_rows(session, "bob")
-    assert {r.Attribute for r in rows} == {RAD_PASSWORD_ATTRIBUTE}
+    assert {r.attribute for r in rows} == {RAD_PASSWORD_ATTRIBUTE}
 
 
 async def test_delete_removes_profile_and_radius_rows(session):
