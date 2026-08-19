@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 from app.models.radius import Nas, RadAcct
+from app.models.subscriber import Subscriber
 from app.services import sessions as sessions_service
 
 
@@ -62,6 +63,19 @@ async def test_list_live_sessions_newest_first_and_paginates(session):
     items, total = await sessions_service.list_live_sessions(session, page=2, page_size=1)
     assert len(items) == 1
     assert total == 2
+
+
+async def test_list_live_sessions_resolves_subscriber_id(session):
+    session.add(Subscriber(username="bob", full_name="Bob", status="active"))
+    _seed_session(session, username="bob", nas="192.168.0.10")
+    _seed_session(session, username="alice", nas="192.168.0.11")  # no subscriber row
+    await session.commit()
+
+    items, total = await sessions_service.list_live_sessions(session, 1, 20)
+    assert total == 2
+    by_username = {item["username"]: item["subscriber_id"] for item in items}
+    assert by_username["bob"] is not None
+    assert by_username["alice"] is None
 
 
 async def test_list_live_sessions_filters_by_username_or_nas(session):

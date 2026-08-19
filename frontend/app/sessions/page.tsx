@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Nav } from "@/components/nav";
 import { SessionDisconnectButton } from "@/components/session-disconnect-button";
 import { formatBytes, formatDate, formatDuration } from "@/lib/format";
@@ -26,7 +28,18 @@ function SessionTable({ sessions }: { sessions: LiveSession[] }) {
           {sessions.map((s) => (
             <tr key={s.id} className="text-zinc-700 dark:text-zinc-300">
               <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-50">
-                {s.username ?? "—"}
+                {s.username == null ? (
+                  "—"
+                ) : s.subscriber_id != null ? (
+                  <Link
+                    href={`/subscribers/${s.subscriber_id}`}
+                    className="text-indigo-600 hover:underline dark:text-indigo-400"
+                  >
+                    {s.username}
+                  </Link>
+                ) : (
+                  s.username
+                )}
               </td>
               <td className="px-4 py-3">
                 {s.nas_shortname ? (

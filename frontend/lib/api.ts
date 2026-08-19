@@ -198,6 +198,7 @@ export type LiveSession = {
   username: string | null;
   nasipaddress: string | null;
   nas_shortname: string | null;
+  subscriber_id: number | null;
   acctstarttime: string | null;
   acctsessiontime: number | null;
   acctinputoctets: number | null;

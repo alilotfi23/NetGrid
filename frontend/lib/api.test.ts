@@ -479,7 +479,7 @@ describe("NAS device helpers", () => {
     mockFetch({
       ok: true,
       json: async () => ({
-        items: [{ id: 1, username: "bob" }],
+        items: [{ id: 1, username: "bob", subscriber_id: 7 }],
         total: 1,
         page: 1,
         page_size: 100,
@@ -492,7 +492,7 @@ describe("NAS device helpers", () => {
 
     await expect(loadSessions()).resolves.toEqual({
       ok: true,
-      sessions: [{ id: 1, username: "bob" }],
+      sessions: [{ id: 1, username: "bob", subscriber_id: 7 }],
       stats: {
         total: 1,
         by_nas: [{ nasipaddress: "192.168.0.10", count: 1, nas_shortname: "edge-r1" }],

@@ -11,6 +11,7 @@ from app.models.audit import AuditLog
 from app.models.nas import NasDevice
 from app.models.radius import Nas, RadAcct
 from app.models.rbac import Admin, Permission, Role
+from app.models.subscriber import Subscriber
 from app.services import disconnect as disconnect_service
 
 
@@ -137,6 +138,28 @@ async def test_sessions_resolve_nas_shortnames(client, session):
     body = resp.json()
     assert body["total"] == 2
     assert {s["username"] for s in body["items"]} == {"bob", "carol"}
+
+
+async def test_sessions_resolve_subscriber_id(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    sub = Subscriber(username="bob", full_name="Bob Smith", status="active")
+    session.add(sub)
+    session.add(
+        RadAcct(
+            username="bob",
+            nasipaddress="192.168.0.10",
+            acctstarttime=datetime.now(UTC) - timedelta(minutes=5),
+            acctsessionid="sess-bob",
+        )
+    )
+    await session.commit()
+
+    resp = await client.get("/api/v1/sessions", headers=_auth(token))
+    assert resp.status_code == 200
+    item = resp.json()["items"][0]
+    assert item["username"] == "bob"
+    assert item["subscriber_id"] == sub.id
 
 
 async def test_sessions_search_and_pagination(client, session):

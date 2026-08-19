@@ -4,22 +4,27 @@ Sessions are pure reads against FreeRADIUS's radacct table — nothing here
 ever writes to it. An "open" session is a row with acctstoptime IS NULL; the
 CoA/disconnect write path lives in app.services.disconnect. The FreeRADIUS
 `nas` table is joined (on nasname = nasipaddress) to resolve each session's
-NAS IP to its human-friendly shortname for the dashboard.
+NAS IP to its human-friendly shortname, and `subscribers` (on username) to
+resolve the subscriber profile id, both for the dashboard.
 """
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.radius import Nas, RadAcct
+from app.models.subscriber import Subscriber
 
 
-def _session_to_dict(row: RadAcct, nas_shortname: str | None = None) -> dict[str, object]:
+def _session_to_dict(
+    row: RadAcct, nas_shortname: str | None = None, subscriber_id: int | None = None
+) -> dict[str, object]:
     """Serialize one radacct row, casting inet columns to str for JSON."""
     return {
         "id": row.id,
         "username": row.username,
         "nasipaddress": str(row.nasipaddress) if row.nasipaddress else None,
         "nas_shortname": nas_shortname,
+        "subscriber_id": subscriber_id,
         "acctstarttime": row.acctstarttime,
         "acctsessiontime": row.acctsessiontime,
         "acctinputoctets": row.acctinputoctets,
@@ -40,13 +45,14 @@ async def list_live_sessions(
 ) -> tuple[list[dict[str, object]], int]:
     """Paginated open sessions (acctstoptime IS NULL), newest start first.
 
-    Left-joins the nas table so each session carries its NAS shortname when
-    one exists. `q` matches username, NAS shortname, or NAS IP
-    (case-insensitive).
+    Left-joins the nas and subscribers tables so each session carries its
+    NAS shortname and subscriber profile id when they exist. `q` matches
+    username, NAS shortname, or NAS IP (case-insensitive).
     """
     base = (
-        select(RadAcct, Nas.shortname)
+        select(RadAcct, Nas.shortname, Subscriber.id)
         .outerjoin(Nas, _NAS_MATCH)
+        .outerjoin(Subscriber, Subscriber.username == RadAcct.username)
         .where(RadAcct.acctstoptime.is_(None))
     )
     count_stmt = select(func.count()).select_from(base.subquery())
@@ -62,7 +68,10 @@ async def list_live_sessions(
         stmt = stmt.where(clause)
     total = (await session.execute(count_stmt)).scalar_one()
     result = await session.execute(stmt.offset((page - 1) * page_size).limit(page_size))
-    return [_session_to_dict(row, shortname) for row, shortname in result.all()], int(total)
+    return [
+        _session_to_dict(row, shortname, subscriber_id)
+        for row, shortname, subscriber_id in result.all()
+    ], int(total)
 
 
 async def get_live_session_stats(
