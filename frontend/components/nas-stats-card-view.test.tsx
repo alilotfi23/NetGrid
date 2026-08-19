@@ -21,6 +21,13 @@ describe("NasStatsCardView", () => {
     expect(link.getAttribute("href")).toBe("/nas-devices");
   });
 
+  it("links the active-summary line to the NAS devices list", () => {
+    render(<NasStatsCardView stats={{ total: 5, active: 3, inactive: 2, by_type: [] }} />);
+
+    const link = screen.getByRole("link", { name: "3 of 5 active" });
+    expect(link.getAttribute("href")).toBe("/nas-devices");
+  });
+
   it("renders zeroes for an empty inventory", () => {
     render(<NasStatsCardView stats={{ total: 0, active: 0, inactive: 0, by_type: [] }} />);
 

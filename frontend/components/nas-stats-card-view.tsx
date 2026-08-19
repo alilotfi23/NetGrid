@@ -46,9 +46,12 @@ export function NasStatsCardView({
             NAS Devices
           </Link>
         </h2>
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+        <Link
+          href="/nas-devices"
+          className="text-xs text-zinc-500 transition-colors hover:text-indigo-600 hover:underline dark:text-zinc-400 dark:hover:text-indigo-400"
+        >
           {stats.active} of {stats.total} active
-        </span>
+        </Link>
       </div>
 
       <dl className="mt-4 grid grid-cols-3 gap-3">

@@ -50,6 +50,13 @@ describe("StatsCardView", () => {
     expect(link.getAttribute("href")).toBe("/subscribers");
   });
 
+  it("links the total-summary line to the subscribers list", () => {
+    render(<StatsCardView stats={STATS} />);
+
+    const link = screen.getByRole("link", { name: "4 total" });
+    expect(link.getAttribute("href")).toBe("/subscribers");
+  });
+
   it("shows an empty message when there are no plans", () => {
     render(<StatsCardView stats={{ ...STATS, total: 0, by_plan: [] }} />);
 
