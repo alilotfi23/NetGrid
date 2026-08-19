@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Nav } from "@/components/nav";
+import { NasDeviceDeleteButton } from "@/components/nas-device-delete-button";
 import { NasDeviceStatusButton } from "@/components/nas-device-status-button";
 import { type NasDevice, loadNasDevices } from "@/lib/api";
 
@@ -51,6 +52,7 @@ function NasDeviceTable({ devices }: { devices: NasDevice[] }) {
                   >
                     Edit
                   </Link>
+                  <NasDeviceDeleteButton deviceId={device.id} deviceName={device.name} />
                 </div>
               </td>
             </tr>
