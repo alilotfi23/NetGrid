@@ -81,6 +81,107 @@ grep for `Received Access-Accept` / `Received Access-Reject` rather than
 relying on the process exit code, and remember that suspending a subscriber
 turns a previously valid credential into a deliberate `Access-Reject`.
 
+## Live verification: NAS-table client lifecycle with radclient
+
+NAS devices are not configured in `clients.conf` — the `sql` module runs with
+`read_clients = yes` (see `raddb/mods-available/sql`), so at startup every
+active `nas_devices` row (mirrored to the FreeRADIUS `nas` table by FastAPI in
+the same transaction) becomes a RADIUS client keyed on its `ip_address`.
+This section proves that coupling end-to-end: create a NAS through the API,
+restart FreeRADIUS, authenticate from a source only the nas-table client
+matches, then deactivate it and watch the probe get dropped.
+
+**Why the probe needs its own IP.** `clients.conf` ships a `netgrid_network`
+client covering `172.28.0.0/16` so any compose container can reach FreeRADIUS.
+A nas-table row for one IP is a `/32` and wins by best-match, so a request
+from the probe IP is handled by the nas-table client — not the network one.
+Signing the request with the nas row's *own* secret (different from the
+network client's `netgrid_radius_secret`) and receiving `Access-Accept` is
+therefore proof that the nas-table client matched; if it hadn't, the
+Message-Authenticator check would fail and the packet would be dropped.
+
+The probe is a throwaway container spawned from the `netgrid-freeradius`
+image itself, so `radclient` and its dictionaries are already installed — no
+binary copying needed. `--entrypoint sleep` just skips starting radiusd.
+
+```bash
+# 1. login as an admin to mint a bearer token for the API
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"superadmin","password":"netgrid-admin"}' \
+  | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+AUTH="Authorization: Bearer $TOKEN"
+
+# 2. an active subscriber to authenticate (same pattern as the radtest section)
+curl -s -X POST http://localhost:8000/api/v1/subscribers -H "$AUTH" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"nastest","full_name":"NAS Lifecycle Tester","password":"radpass123"}' > /dev/null
+
+# 3. probe container on the netgrid network (gets a fresh 172.28.0.x IP)
+PROBE=$(docker run -d --rm --entrypoint sleep netgrid-freeradius 600)
+docker network connect netgrid_netgrid "$PROBE"
+PROBE_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$PROBE" | awk '{print $2}')
+FR_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' netgrid-freeradius-1)
+echo "probe=$PROBE_IP freeradius=$FR_IP"
+
+# 4. create the NAS device for the probe IP via the API
+NAS=$(curl -s -X POST http://localhost:8000/api/v1/nas-devices -H "$AUTH" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"nasprobe\",\"ip_address\":\"$PROBE_IP\",\"shortname\":\"nasprobe\",\"secret\":\"nasprobe-secret\",\"nas_type\":\"other\",\"ports\":1812}")
+NAS_ID=$(echo "$NAS" | python -c "import sys,json;print(json.load(sys.stdin)['id'])")
+# expect: 201, and the response carries NO "secret" field
+
+# 5. confirm the mirrored nas row — plaintext secret, because FreeRADIUS must
+#    recover it for PAP/CHAP (the encrypted copy lives in nas_devices)
+docker compose exec -T postgres psql -U netgrid -d netgrid \
+  -c "SELECT nasname, shortname, secret FROM nas WHERE nasname='$PROBE_IP';"
+
+# 6. restart FreeRADIUS so read_clients loads the nas row as a client
+sleep 2
+docker compose restart freeradius
+docker compose logs --since 30s freeradius | grep -E "Client .*\(sql\) added"
+# expect: rlm_sql (<probe ip>): Client "nasprobe" (sql) added
+
+# 7. real RADIUS auth from the probe, signed with the nas row's secret
+sleep 2
+docker exec "$PROBE" sh -c "printf 'User-Name=nastest, User-Password=radpass123' | radclient -x $FR_IP:1812 auth nasprobe-secret"
+# expect: "Received Access-Accept"
+
+# 8. deactivate -> the nas row is removed in the same transaction
+curl -s -X PATCH http://localhost:8000/api/v1/nas-devices/$NAS_ID -H "$AUTH" \
+  -H "Content-Type: application/json" -d '{"is_active":false}' > /dev/null
+docker compose exec -T postgres psql -U netgrid -d netgrid \
+  -c "SELECT count(*) FROM nas WHERE nasname='$PROBE_IP';"
+# expect: 0
+
+# 9. restart and retry the probe -> FreeRADIUS no longer knows this NAS
+sleep 2
+docker compose restart freeradius
+sleep 2
+docker exec "$PROBE" sh -c "timeout 8 sh -c \"printf 'User-Name=nastest, User-Password=radpass123' | radclient -x $FR_IP:1812 auth nasprobe-secret\""
+# expect: NO "Received" line. The /32 nas client is gone, so the /16 network
+# client matches instead and the stale secret fails the Message-Authenticator
+# check — the packet is dropped without a response, and FreeRADIUS logs:
+#   Dropping packet without response because of error: Received packet from
+#   <probe ip> with invalid Message-Authenticator ... (from client netgrid_network)
+
+# 10. cleanup: delete the NAS (removes the nas row), the subscriber, and the probe
+curl -s -o /dev/null -w "delete: %{http_code}\n" \
+  -X DELETE http://localhost:8000/api/v1/nas-devices/$NAS_ID -H "$AUTH"
+SUB_ID=$(curl -s "http://localhost:8000/api/v1/subscribers?q=nastest" -H "$AUTH" \
+  | python -c "import sys,json;d=json.load(sys.stdin);print(d['items'][0]['id'] if d['items'] else '')")
+if [ -n "$SUB_ID" ]; then
+  curl -s -o /dev/null -X DELETE http://localhost:8000/api/v1/subscribers/$SUB_ID -H "$AUTH"
+fi
+docker rm -f "$PROBE"
+```
+
+Reading radclient output: the deactivation step is the interesting one — a
+**silent drop is the expected success** once the NAS is decommissioned, and the
+FreeRADIUS log line quoted above is how you confirm it. While the nas-table
+client exists, `Received Access-Accept` (or `Access-Reject` for a bad
+subscriber credential) is the signal, exactly as with radtest.
+
 ## Abuse protection
 
 Failed-auth tracking / lockout policy (per-subscriber or per-NAS brute-force
