@@ -33,8 +33,9 @@ LIMITS = {
     # Phase 3 management endpoints: reads loose, writes moderate.
     "admin_read": "60/minute",
     "admin_write": "20/minute",
-    # Phase 5 subscriber reads (stats) — loose, mirroring admin_read.
+    # Phase 5 subscriber endpoints: reads loose, writes moderate.
     "subscriber_read": "60/minute",
+    "subscriber_write": "20/minute",
 }
 
 
