@@ -668,6 +668,16 @@ describe("invoice helpers", () => {
     );
   });
 
+  it("loadPaymentsReport forwards the year filter", async () => {
+    mockFetch({ ok: true, json: async () => REPORT });
+
+    await expect(loadPaymentsReport(2025)).resolves.toEqual({ ok: true, report: REPORT });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/invoices/report?year=2025",
+      expect.anything(),
+    );
+  });
+
   it("loadPaymentsReport returns an error result instead of throwing", async () => {
     mockFetch({ ok: false, status: 403 });
     expect(await loadPaymentsReport()).toEqual({

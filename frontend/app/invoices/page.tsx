@@ -34,6 +34,15 @@ const STATUS_FILTERS = [
   { value: "overdue", label: "Overdue" },
 ];
 
+/** Status-filter chip href, preserving the report's ?year= filter. */
+function statusHref(status: string, year: string | undefined): string {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (year) params.set("year", year);
+  const qs = params.toString();
+  return qs ? `/invoices?${qs}` : "/invoices";
+}
+
 function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -90,9 +99,15 @@ function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; year?: string }>;
 }) {
-  const { status } = await searchParams;
+  const { status, year } = await searchParams;
+  // only forward a valid calendar year (2000-2100, matching the backend's
+  // query validation); anything else is treated as "all years"
+  const parsedYear = year != null ? Number(year) : NaN;
+  const reportYear = Number.isInteger(parsedYear) && parsedYear >= 2000 && parsedYear <= 2100
+    ? parsedYear
+    : undefined;
   const result = await loadInvoices(status ? { status } : undefined);
 
   const tiles = [
@@ -152,7 +167,7 @@ export default async function InvoicesPage({
             </dl>
 
             <div className="mt-6">
-              <RevenueReportCard />
+              <RevenueReportCard year={reportYear} status={status} />
             </div>
 
             <div className="mt-6 flex items-center gap-2">
@@ -161,7 +176,7 @@ export default async function InvoicesPage({
                 return (
                   <Link
                     key={filter.value}
-                    href={filter.value ? `/invoices?status=${filter.value}` : "/invoices"}
+                    href={statusHref(filter.value, reportYear != null ? String(reportYear) : undefined)}
                     className={
                       active
                         ? "rounded-full bg-indigo-600 px-3 py-1 text-xs font-medium text-white"

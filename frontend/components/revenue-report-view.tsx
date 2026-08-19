@@ -1,5 +1,6 @@
 import type { PaymentReport } from "@/lib/api";
 import { formatCurrency, formatMonth } from "@/lib/format";
+import { YearFilter } from "./year-filter";
 
 const METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
@@ -16,14 +17,19 @@ export function methodLabel(method: string): string {
 /**
  * Presentational card for the payments revenue report: completed-payment
  * revenue grouped by (month, method), newest month first, with the grand
- * total. Rendered by the server-side RevenueReportCard.
+ * total. `currentYear`/`status` drive the year filter, which navigates to
+ * /invoices?year= (server-side filtering against the backend).
  */
 export function RevenueReportView({
   report,
   error,
+  currentYear,
+  status,
 }: {
   report?: PaymentReport;
   error?: string;
+  currentYear?: string | null;
+  status?: string;
 }) {
   if (error || !report) {
     return (
@@ -47,13 +53,16 @@ export function RevenueReportView({
       aria-label="Revenue report"
       className="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
     >
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-3">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
           Payments revenue
         </h2>
-        <span className="text-xs text-zinc-500 dark:text-zinc-400">
-          {report.items.reduce((sum, row) => sum + row.count, 0)} payments
-        </span>
+        <div className="flex items-baseline gap-3">
+          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+            {report.items.reduce((sum, row) => sum + row.count, 0)} payments
+          </span>
+          <YearFilter currentYear={currentYear ?? null} status={status} />
+        </div>
       </div>
 
       {report.items.length === 0 ? (
