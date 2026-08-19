@@ -27,6 +27,10 @@ server default {
 		mschap
 		sql
 		pap
+		# Phase 11 abuse protection: reject after too many recent failed
+		# auths (counted from radpostauth). Runs last so its
+		# Auth-Type := Reject wins over the credential modules above.
+		lockout
 	}
 
 	authenticate {

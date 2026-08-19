@@ -1,0 +1,51 @@
+#  Failed-auth lockout policy (Phase 11 — abuse protection).
+#
+#  Every authentication attempt is already written to `radpostauth` by the
+#  `sql` module in the post-auth section (reply = 'Access-Accept' or
+#  'Access-Reject'). This policy counts recent *failures* for the requesting
+#  username and, once a threshold is exceeded, forces an Access-Reject before
+#  the credential is even checked — the attacker cannot keep guessing.
+#
+#  There is deliberately no separate lockout table: the lockout *is* the
+#  recent-failure count, so it self-expires as failures age out of the
+#  counting window (no cleanup job, no clock skew between a "lock" write and
+#  an "unlock" read). A locked-out attempt is itself logged to radpostauth as
+#  an Access-Reject, which keeps the count at/above the threshold while an
+#  attacker keeps hammering — the lockout only lifts once they back off for a
+#  full window. That also means it is *not* a hard timed ban: a legitimate
+#  user who mistyped a password 10 times in 5 minutes is locked out for at
+#  most 5 minutes (until the oldest failures fall out of the window).
+#
+#  Tunables: MAX_FAILURES (window threshold) and the interval below
+#  (counting window). `%{User-Name}` is interpolated into the query as in the
+#  stock FreeRADIUS brute-force policy (wiki.freeradius.org). A crafted
+#  User-Name can only corrupt the count for its own request (worst case: an
+#  attacker locks *themselves* out or bypasses their own lockout) — the query
+#  result is used solely as a threshold for the caller's own packet, never to
+#  read or modify data.
+#
+#  Invoked from the `authorize` section of sites-enabled/default, *after*
+#  `pap`, so the Auth-Type := Reject below always wins over anything the
+#  credential modules set. An Auth-Type of "Reject" has no handler in the
+#  authenticate section, so FreeRADIUS answers Access-Reject and runs the
+#  Post-Auth-Type REJECT section (which logs the attempt via sql).
+#
+#  Note: this file is included from the `policy { }` block of radiusd.conf,
+#  where a bare `NAME { }` block defines a policy — no `policy NAME { }`
+#  wrapper (that is FreeRADIUS 4 syntax).
+lockout {
+    if (&User-Name) {
+        update request {
+            Tmp-Integer-0 := "%{sql:SELECT count(*) FROM radpostauth WHERE username = '%{User-Name}' AND reply = 'Access-Reject' AND authdate > now() - interval '5 minutes'}"
+        }
+
+        if (Tmp-Integer-0 >= 10) {
+            update control {
+                Auth-Type := Reject
+            }
+            update reply {
+                Reply-Message := "Too many failed authentication attempts — try again later"
+            }
+        }
+    }
+}

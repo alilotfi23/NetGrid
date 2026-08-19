@@ -137,14 +137,11 @@ jobs:
           echo "radpostauth rows for baduser: $ROWS"
           test "$ROWS" -ge 1
 
-      # Phase 11 adds scripted radtest/radclient pytest checks here; until
-      # then the smoke step above covers the RADIUS -> DB path.
+      # Scripted radtest checks for the Phase 11 lockout policy — the lockout
+      # lifecycle, successful-auths-don't-count, unknown users, and hostile
+      # User-Names, all asserted against radpostauth via psql.
       - name: Scripted RADIUS tests (tests/radius)
         run: |
-          if ls backend/tests/radius/test_*.py >/dev/null 2>&1; then
-            cd backend
-            pip install -e ".[dev]"
-            pytest tests/radius -q
-          else
-            echo "No pytest-based RADIUS tests yet (planned in Phase 11); skipping."
-          fi
+          cd backend
+          pip install -e ".[dev]"
+          pytest tests/radius -q

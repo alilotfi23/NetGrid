@@ -272,7 +272,7 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Background job (APScheduler) for invoice generation
   - Full unit + integration coverage (pricing/proration logic, invoice generation job, payment status transitions, scheduled job produces expected DB state)
 
-- [ ] **Phase 11 — FreeRADIUS abuse protection**
+- [x] **Phase 11 — FreeRADIUS abuse protection**
   - Failed-auth tracking / lockout policy in FreeRADIUS (`radpostauth` or `unlang`), per the Rate Limiting section
   - Document the approach in `/freeradius/README.md`
   - `radtest`/`radclient` scripted checks under `/tests/radius`

@@ -182,9 +182,88 @@ FreeRADIUS log line quoted above is how you confirm it. While the nas-table
 client exists, `Received Access-Accept` (or `Access-Reject` for a bad
 subscriber credential) is the signal, exactly as with radtest.
 
-## Abuse protection
+## Abuse protection (Phase 11) — failed-auth lockout
 
-Failed-auth tracking / lockout policy (per-subscriber or per-NAS brute-force
-mitigation) is not yet implemented — it arrives with Phase 11
-(`radpostauth` logging or an `unlang` policy), and this section will document
-the chosen approach then.
+**Approach: per-username lockout driven by `radpostauth`, enforced by a small
+`unlang` policy (`raddb/policy.d/lockout`, invoked from the `authorize`
+section of `sites-enabled/default`).**
+
+How it works:
+
+- Every authentication attempt is already written to `radpostauth` by the
+  `sql` module in `post-auth` (reply = `Access-Accept` / `Access-Reject`).
+- In `authorize` (after `pap`, so its `Auth-Type := Reject` wins over the
+  credential modules), the policy counts recent failures for the requesting
+  username:
+
+  ```unlang
+  Tmp-Integer-0 := "%{sql:SELECT count(*) FROM radpostauth WHERE
+      username = '%{User-Name}' AND reply = 'Access-Reject' AND
+      authdate > now() - interval '5 minutes'}"
+  ```
+
+- If the count is >= 10, the policy sets `control:Auth-Type := Reject` and a
+  `Reply-Message`. `Auth-Type = Reject` has no handler in the `authenticate`
+  section, so FreeRADIUS answers **Access-Reject before the credential is
+  even checked** and the `Post-Auth-Type REJECT` section logs the attempt —
+  keeping the counter at/above threshold while an attacker keeps hammering.
+
+There is **no separate lockout table by design**: the lockout *is* the
+recent-failure count, so it self-expires as failures age out of the 5-minute
+window (no cleanup job, no clock skew between a lock write and an unlock
+read). A legitimate user who mistypes 10 times is locked out for at most 5
+minutes. Tunables: `>= 10` (threshold) and `interval '5 minutes'` (window)
+in `raddb/policy.d/lockout`.
+
+Notes and known limits:
+
+- **Scope: per username.** Per-NAS / per-source-IP throttling is not
+  implemented — `clients.conf`-level limits (`max_connections`) still apply
+  per client, and this policy covers the credential-guessing vector.
+- **The username is interpolated into the SQL query** (same as the stock
+  FreeRADIUS brute-force policy, wiki.freeradius.org). A crafted `User-Name`
+  can only corrupt the count for its own request (worst case: an attacker
+  locks themselves out or bypasses their own lockout) — the result is used
+  solely as a threshold for the caller's own packet, never to read or modify
+  data. Verified by `test_hostile_username_does_not_break_lockout_query`.
+- **`radpostauth` stores attempted passwords in plaintext** (standard
+  FreeRADIUS schema behaviour — the lockout counter depends on the table).
+  This is the stock `schema.sql`; treat the database accordingly.
+- The policy fails open: if the SQL query errors, `Tmp-Integer-0` is left
+  unset and the request proceeds (auth itself would fail anyway if the DB is
+  down, since `sql` also does the credential lookup).
+
+### Verifying with radtest (scripted checks in `backend/tests/radius`)
+
+The pytest module `backend/tests/radius/test_lockout.py` drives the whole
+lifecycle through `radtest` + `psql` against the compose stack (no Python
+RADIUS client — it exercises the exact production path):
+
+```bash
+docker compose up -d --wait postgres freeradius
+cd backend && pytest tests/radius -q
+```
+
+Checks: baseline accept; 10 wrong guesses; the 11th attempt with the
+**correct** password is rejected (lockout short-circuits the credential
+check); all 11 rejections are in `radpostauth`; clearing the failure rows
+(simulating window expiry) lifts the lockout; successful auths never count
+toward the threshold; unknown usernames are protected too; and a hostile
+`User-Name` cannot break the policy or the server.
+
+Manual spot-check (same flow, no pytest):
+
+```bash
+# seed a subscriber the way the FastAPI service does
+docker compose exec -T postgres psql -U netgrid -d netgrid -c \
+  "INSERT INTO radcheck (username, attribute, op, value) VALUES
+   ('lockprobe', 'Cleartext-Password', ':=', 'correct-horse')"
+# 10 wrong guesses, then a correct one — it is rejected (locked out)
+docker compose exec freeradius radtest lockprobe wrongpass 127.0.0.1 0 testing123
+# ... x10 ...
+docker compose exec freeradius radtest lockprobe correct-horse 127.0.0.1 0 testing123
+# expect: "Received Access-Reject"
+# cleanup
+docker compose exec -T postgres psql -U netgrid -d netgrid -c \
+  "DELETE FROM radcheck WHERE username='lockprobe'; DELETE FROM radpostauth WHERE username='lockprobe';"
+```
