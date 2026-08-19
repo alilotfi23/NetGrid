@@ -256,7 +256,7 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Alembic migration adding `ports`/`server`/`community` to `nas_devices` (the nas-table-mirrored columns)
   - Full unit + integration coverage (validation, secret handling, CRUD, uniqueness constraints, secret never in responses)
 
-- [ ] **Phase 8 — Rate limiting (API side)**
+- [x] **Phase 8 — Rate limiting (API side)**
   - `slowapi` + Redis wiring, centralized in `app/core/rate_limit.py`
   - Tiered limits applied across existing endpoints (auth strict, writes moderate, reads loose)
   - Full unit + integration coverage (limiter logic, 429 at threshold, window reset, per-IP vs per-user isolation)
