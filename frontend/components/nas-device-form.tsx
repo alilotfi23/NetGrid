@@ -107,9 +107,6 @@ export function NasDeviceForm({ device }: { device?: NasDevice }) {
     if (mode === "create") {
       payload.ip_address = values.ip_address.trim();
       payload.secret = values.secret;
-    } else if (values.secret.trim() !== "") {
-      // Rotation only — blank means keep the current secret.
-      payload.secret = values.secret;
     }
 
     setSubmitting(true);
@@ -213,10 +210,10 @@ export function NasDeviceForm({ device }: { device?: NasDevice }) {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      {mode === "create" && (
         <div>
           <label htmlFor="secret" className={labelClass}>
-            {mode === "create" ? "Shared secret" : "New shared secret (optional)"}
+            Shared secret
           </label>
           <input
             id="secret"
@@ -228,11 +225,12 @@ export function NasDeviceForm({ device }: { device?: NasDevice }) {
             onChange={(e) => set("secret", e.target.value)}
           />
           <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-            {mode === "create"
-              ? "Never shown again — stored encrypted."
-              : "Leave blank to keep the current secret."}
+            Never shown again — stored encrypted.
           </p>
         </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label htmlFor="ports" className={labelClass}>
             Ports (optional)

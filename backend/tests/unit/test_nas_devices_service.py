@@ -132,6 +132,37 @@ async def test_update_fields_sync_nas_row(session):
     assert row.ports == 3799
 
 
+async def test_rotate_secret_re_syncs_nas_row(session):
+    actor = await _seed_actor(session)
+    device = await _create(session, actor.id)
+    await nas_service.rotate_nas_device_secret(
+        session, device, actor_id=actor.id, secret="rotated_secret_9"
+    )
+    assert decrypt_secret(device.secret_encrypted) == "rotated_secret_9"
+    row = await _nas_row(session, "192.168.0.10")
+    assert row is not None
+    assert row.secret == "rotated_secret_9"
+
+
+async def test_rotate_secret_on_inactive_device(session):
+    actor = await _seed_actor(session)
+    device = await _create(session, actor.id, is_active=False)
+    assert await _nas_row(session, "192.168.0.10") is None
+
+    await nas_service.rotate_nas_device_secret(
+        session, device, actor_id=actor.id, secret="rotated_secret_9"
+    )
+    # the encrypted copy rotates even though there is no nas row to rewrite
+    assert decrypt_secret(device.secret_encrypted) == "rotated_secret_9"
+    assert await _nas_row(session, "192.168.0.10") is None
+
+    # reactivating afterwards uses the rotated secret
+    await nas_service.update_nas_device(session, device, actor_id=actor.id, is_active=True)
+    row = await _nas_row(session, "192.168.0.10")
+    assert row is not None
+    assert row.secret == "rotated_secret_9"
+
+
 async def test_deactivate_removes_nas_row_reactivate_recreates(session):
     actor = await _seed_actor(session)
     device = await _create(session, actor.id)
@@ -163,6 +194,9 @@ async def test_audit_entries_written(session):
     actor = await _seed_actor(session)
     device = await _create(session, actor.id)
     await nas_service.update_nas_device(session, device, actor_id=actor.id, secret="rotated_1")
+    await nas_service.rotate_nas_device_secret(
+        session, device, actor_id=actor.id, secret="rotated_2"
+    )
     await nas_service.delete_nas_device(session, device, actor.id)
 
     rows = (await session.execute(select(AuditLog))).scalars().all()
@@ -170,10 +204,11 @@ async def test_audit_entries_written(session):
     assert actions == {
         ("create", "nas_devices"),
         ("update", "nas_devices"),
+        ("rotate_secret", "nas_devices"),
         ("delete", "nas_devices"),
     }
-    update = next(r for r in rows if r.action == "update")
-    assert update.metadata_ == {"name": "core-r1", "fields": ["secret"]}
+    rotate = next(r for r in rows if r.action == "rotate_secret")
+    assert rotate.metadata_ == {"name": "core-r1", "fields": ["secret"]}
 
 
 async def test_encrypt_decrypt_roundtrip():

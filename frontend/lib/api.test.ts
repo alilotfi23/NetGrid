@@ -15,6 +15,7 @@ import {
   loadSubscribers,
   loadSubscriberSessions,
   loadSubscriberStats,
+  rotateNasDeviceSecret,
   updateNasDevice,
   updateSubscriber,
 } from "./api";
@@ -370,5 +371,16 @@ describe("NAS device helpers", () => {
     const [url, init] = vi.mocked(fetch).mock.calls[0];
     expect(url).toBe("http://localhost:8000/api/v1/nas-devices/3");
     expect(init?.method).toBe("DELETE");
+  });
+
+  it("rotateNasDeviceSecret POSTs the new secret to the rotate endpoint", async () => {
+    mockFetch({ ok: true, json: async () => DEVICE });
+
+    const rotated = await rotateNasDeviceSecret(3, "new-secret-99");
+    expect(rotated).toEqual(DEVICE);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/nas-devices/3/rotate-secret");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ secret: "new-secret-99" });
   });
 });

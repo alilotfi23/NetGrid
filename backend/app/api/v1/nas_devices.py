@@ -16,7 +16,12 @@ from app.core.db import get_session
 from app.core.pagination import Page
 from app.core.rate_limit import LIMITS, limiter
 from app.models.rbac import Admin
-from app.schemas.nas_devices import NasDeviceCreate, NasDeviceOut, NasDeviceUpdate
+from app.schemas.nas_devices import (
+    NasDeviceCreate,
+    NasDeviceOut,
+    NasDeviceSecretRotate,
+    NasDeviceUpdate,
+)
 from app.services import nas_devices as nas_devices_service
 
 router = APIRouter(prefix="/nas-devices", tags=["nas-devices"])
@@ -94,6 +99,29 @@ async def update_nas_device(
     device = await nas_devices_service.get_nas_device_or_404(session, nas_device_id)
     device = await nas_devices_service.update_nas_device(
         session, device, actor_id=actor.id, **payload.model_dump(exclude_unset=True)
+    )
+    return NasDeviceOut.model_validate(device)
+
+
+@router.post("/{nas_device_id}/rotate-secret", response_model=NasDeviceOut)
+@limiter.limit(LIMITS["nas_write"])
+async def rotate_nas_device_secret(
+    request: Request,
+    response: Response,
+    nas_device_id: int,
+    payload: NasDeviceSecretRotate,
+    session: SessionDep,
+    actor: Annotated[Admin, Depends(require_permission("nas_devices:write"))],
+) -> NasDeviceOut:
+    """POST /api/v1/nas-devices/{id}/rotate-secret — requires nas_devices:write.
+
+    Rotates the shared secret in isolation: re-encrypts the at-rest copy and
+    rewrites the plaintext secret on the FreeRADIUS nas row without touching
+    any other device field.
+    """
+    device = await nas_devices_service.get_nas_device_or_404(session, nas_device_id)
+    device = await nas_devices_service.rotate_nas_device_secret(
+        session, device, actor_id=actor.id, secret=payload.secret
     )
     return NasDeviceOut.model_validate(device)
 

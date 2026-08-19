@@ -353,3 +353,12 @@ export async function updateNasDevice(id: number, payload: unknown): Promise<Nas
 export async function deleteNasDevice(id: number): Promise<void> {
   await apiFetch(`/api/v1/nas-devices/${id}`, { method: "DELETE" });
 }
+
+/** Rotate the shared secret without touching any other device field. */
+export async function rotateNasDeviceSecret(id: number, secret: string): Promise<NasDevice> {
+  const res = await apiFetch(`/api/v1/nas-devices/${id}/rotate-secret`, {
+    method: "POST",
+    body: JSON.stringify({ secret }),
+  });
+  return (await res.json()) as NasDevice;
+}

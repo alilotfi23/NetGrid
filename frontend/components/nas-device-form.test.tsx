@@ -126,7 +126,7 @@ describe("NasDeviceForm (create)", () => {
 });
 
 describe("NasDeviceForm (edit)", () => {
-  it("prefills values and hides the immutable IP field", () => {
+  it("prefills values and hides the immutable IP field and the secret field", () => {
     render(<NasDeviceForm device={DEVICE} />);
 
     expect(screen.getByLabelText("Name")).toHaveProperty("value", "edge-r1");
@@ -136,10 +136,11 @@ describe("NasDeviceForm (edit)", () => {
     const ip = screen.getByLabelText("IP address") as HTMLInputElement;
     expect(ip).toHaveProperty("value", "192.168.0.10");
     expect(ip).toHaveProperty("disabled", true);
-    expect(screen.getByLabelText("New shared secret (optional)")).toHaveProperty("value", "");
+    // rotation lives on the dedicated RotateSecretForm, not the edit form
+    expect(screen.queryByLabelText(/shared secret/i)).toBeNull();
   });
 
-  it("PATCHes without the secret when it is left blank", async () => {
+  it("PATCHes field changes without ever sending a secret", async () => {
     mockFetchOnce({ ok: true, json: async () => ({ ...DEVICE, description: "core" }) });
     render(<NasDeviceForm device={DEVICE} />);
 
@@ -155,20 +156,6 @@ describe("NasDeviceForm (edit)", () => {
     expect(JSON.parse(String(init?.body))).toEqual(
       expect.not.objectContaining({ secret: expect.anything() }),
     );
-  });
-
-  it("includes the secret in the PATCH when rotated", async () => {
-    mockFetchOnce({ ok: true, json: async () => DEVICE });
-    render(<NasDeviceForm device={DEVICE} />);
-
-    fireEvent.change(screen.getByLabelText("New shared secret (optional)"), {
-      target: { value: "newsecret" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/nas-devices"));
-    const [, init] = vi.mocked(fetch).mock.calls[0];
-    expect(JSON.parse(String(init?.body))).toEqual(expect.objectContaining({ secret: "newsecret" }));
   });
 
   it("deactivating unchecks the active box and sends is_active=false", async () => {

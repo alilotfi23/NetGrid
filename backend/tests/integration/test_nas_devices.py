@@ -89,14 +89,16 @@ async def test_superadmin_full_lifecycle(client, session):
     assert resp.status_code == 200
     assert "secret" not in resp.json()
 
-    # rotate the secret -> nas row carries the new plaintext
-    resp = await client.patch(
-        f"/api/v1/nas-devices/{device_id}",
+    # rotate the secret via the dedicated action -> nas row carries the new
+    # plaintext without any other field being touched
+    resp = await client.post(
+        f"/api/v1/nas-devices/{device_id}/rotate-secret",
         json={"secret": "rotated_secret_9"},
         headers=_auth(token),
     )
     assert resp.status_code == 200
     assert "secret" not in resp.json()
+    assert resp.json()["name"] == "core-r1"  # other fields untouched
     rows = await _nas_rows(session)
     assert len(rows) == 1
     assert rows[0].secret == "rotated_secret_9"
@@ -189,6 +191,7 @@ async def test_auditor_read_only(client, session):
     for method, path, body in [
         ("post", "/api/v1/nas-devices", _payload(name="x", ip_address="10.1.1.1")),
         ("patch", f"/api/v1/nas-devices/{device['id']}", {"is_active": False}),
+        ("post", f"/api/v1/nas-devices/{device['id']}/rotate-secret", {"secret": "x"}),
         ("delete", f"/api/v1/nas-devices/{device['id']}", None),
     ]:
         resp = await client.request(method, path, json=body, headers=_auth(token))
@@ -220,13 +223,37 @@ async def test_audit_entries_written(client, session):
     await _seed_admin(session, "boss", ["*:*"])
     token = await _login(client)
     device = await _create_via_api(client, token)
-    await client.patch(
-        f"/api/v1/nas-devices/{device['id']}", json={"secret": "rotated_1"}, headers=_auth(token)
+    await client.post(
+        f"/api/v1/nas-devices/{device['id']}/rotate-secret",
+        json={"secret": "rotated_1"},
+        headers=_auth(token),
     )
     await client.delete(f"/api/v1/nas-devices/{device['id']}", headers=_auth(token))
 
     rows = (await session.execute(select(AuditLog))).scalars().all()
     actions = {(row.action, row.resource) for row in rows}
     assert ("create", "nas_devices") in actions
-    assert ("update", "nas_devices") in actions
+    assert ("rotate_secret", "nas_devices") in actions
     assert ("delete", "nas_devices") in actions
+
+
+async def test_rotate_secret_validation(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    device = await _create_via_api(client, token)
+
+    # empty and over-long secrets are rejected without touching the stored one
+    for bad in ["", "x" * 64]:
+        resp = await client.post(
+            f"/api/v1/nas-devices/{device['id']}/rotate-secret",
+            json={"secret": bad},
+            headers=_auth(token),
+        )
+        assert resp.status_code == 422, (bad, resp.text)
+    rows = await _nas_rows(session)
+    assert rows[0].secret == "radius_secret_1"
+
+    resp = await client.post(
+        "/api/v1/nas-devices/999/rotate-secret", json={"secret": "x"}, headers=_auth(token)
+    )
+    assert resp.status_code == 404

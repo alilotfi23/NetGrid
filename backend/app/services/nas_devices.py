@@ -211,6 +211,33 @@ async def update_nas_device(
     return device
 
 
+async def rotate_nas_device_secret(
+    session: AsyncSession, device: NasDevice, *, actor_id: int, secret: str
+) -> NasDevice:
+    """Rotate the shared secret without touching any other field.
+
+    Re-encrypts the at-rest copy in `secret_encrypted` and rewrites the
+    plaintext secret on the FreeRADIUS nas row (active devices only) so the
+    rotation takes effect on the next RADIUS request — no full device edit
+    required. Inactive devices get the new encrypted copy and will use the
+    new secret when reactivated.
+    """
+    device.secret_encrypted = encrypt_secret(secret)
+    with session.no_autoflush:
+        if device.is_active:
+            await _sync_nas_row(session, device, secret)
+    await session.commit()
+    await audit_service.record_audit(
+        session,
+        admin_id=actor_id,
+        action="rotate_secret",
+        resource="nas_devices",
+        resource_id=str(device.id),
+        metadata_={"name": device.name, "fields": ["secret"]},
+    )
+    return device
+
+
 async def delete_nas_device(session: AsyncSession, device: NasDevice, actor_id: int) -> None:
     """Delete the inventory row and the FreeRADIUS nas row in one transaction."""
     ip_address = device.ip_address

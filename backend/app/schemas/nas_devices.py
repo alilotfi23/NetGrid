@@ -55,3 +55,13 @@ class NasDeviceUpdate(BaseModel):
     community: str | None = Field(default=None, max_length=50)
     description: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
+
+
+class NasDeviceSecretRotate(BaseModel):
+    """Payload for the dedicated secret-rotation action.
+
+    Rotation re-encrypts the at-rest copy and rewrites the plaintext secret on
+    the FreeRADIUS nas row (active devices) without touching any other field.
+    """
+
+    secret: str = Field(min_length=1, max_length=63)
