@@ -1,7 +1,37 @@
-"""Unit tests for subscriber status-count aggregation (services/subscribers)."""
+"""Unit tests for the subscriber service (services/subscribers)."""
 
+import pytest
+from sqlalchemy import select
+
+from app.core.exceptions import ConflictError, NotFoundError
+from app.core.security import hash_password
+from app.models.audit import AuditLog
+from app.models.radius import RadCheck
+from app.models.rbac import Admin
 from app.models.subscriber import Subscriber
 from app.services import subscribers as subscribers_service
+
+RAD_PASSWORD_ATTRIBUTE = subscribers_service.RAD_PASSWORD_ATTRIBUTE
+RAD_AUTH_TYPE_ATTRIBUTE = subscribers_service.RAD_AUTH_TYPE_ATTRIBUTE
+
+
+async def _radcheck_rows(session, username: str, attribute: str | None = None) -> list[RadCheck]:
+    stmt = select(RadCheck).where(RadCheck.UserName == username)
+    if attribute is not None:
+        stmt = stmt.where(RadCheck.Attribute == attribute)
+    return list((await session.execute(stmt)).scalars().all())
+
+
+async def _seed_actor(session, username="actor") -> Admin:
+    admin = Admin(
+        username=username,
+        email=f"{username}@netgrid.local",
+        password_hash=hash_password("secret123"),
+        is_active=True,
+    )
+    session.add(admin)
+    await session.commit()
+    return admin
 
 
 async def _seed(session, username: str, status: str) -> None:
@@ -32,3 +62,91 @@ async def test_get_subscriber_stats_unknown_status_not_in_named_counts(session):
     assert stats["expired"] == 0
     # drift rows still count toward the total
     assert stats["total"] == 2
+
+
+async def test_create_writes_profile_and_radius_password(session):
+    actor = await _seed_actor(session)
+    subscriber = await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username="bob",
+        full_name="Bob Subscriber",
+        password="radpass123",
+    )
+    assert subscriber.username == "bob"
+    assert subscriber.status == "active"
+
+    rows = await _radcheck_rows(session, "bob")
+    assert len(rows) == 1
+    assert rows[0].Attribute == RAD_PASSWORD_ATTRIBUTE
+    assert rows[0].op == ":="
+    assert rows[0].Value == "radpass123"
+
+
+async def test_create_suspended_writes_reject(session):
+    actor = await _seed_actor(session)
+    await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username="bob",
+        full_name="Bob",
+        password="radpass123",
+        status="suspended",
+    )
+    rows = await _radcheck_rows(session, "bob")
+    assert {r.Attribute for r in rows} == {RAD_PASSWORD_ATTRIBUTE, RAD_AUTH_TYPE_ATTRIBUTE}
+    reject = next(r for r in rows if r.Attribute == RAD_AUTH_TYPE_ATTRIBUTE)
+    assert reject.Value == "Reject"
+
+
+async def test_create_duplicate_username_conflict(session):
+    actor = await _seed_actor(session)
+    kwargs = dict(actor_id=actor.id, username="bob", full_name="Bob", password="radpass123")
+    await subscribers_service.create_subscriber(session, **kwargs)
+    with pytest.raises(ConflictError):
+        await subscribers_service.create_subscriber(session, **kwargs)
+    # the failed create's radcheck rows were rolled back with it
+    assert len(await _radcheck_rows(session, "bob")) == 1
+
+
+async def test_get_subscriber_or_404(session):
+    actor = await _seed_actor(session)
+    subscriber = await subscribers_service.create_subscriber(
+        session, actor_id=actor.id, username="bob", full_name="Bob", password="radpass123"
+    )
+    found = await subscribers_service.get_subscriber_or_404(session, subscriber.id)
+    assert found.id == subscriber.id
+    with pytest.raises(NotFoundError):
+        await subscribers_service.get_subscriber_or_404(session, 999)
+
+
+async def test_list_subscribers_paginates_and_filters(session):
+    actor = await _seed_actor(session)
+    for i in range(3):
+        await subscribers_service.create_subscriber(
+            session,
+            actor_id=actor.id,
+            username=f"u{i}",
+            full_name=f"User {i}",
+            password="radpass123",
+        )
+    page1, total = await subscribers_service.list_subscribers(session, page=1, page_size=2)
+    assert len(page1) == 2
+    assert total == 3
+    filtered, total = await subscribers_service.list_subscribers(
+        session, page=1, page_size=20, q="u1"
+    )
+    assert [s.username for s in filtered] == ["u1"]
+    assert total == 1
+
+
+async def test_create_writes_audit_entry(session):
+    actor = await _seed_actor(session)
+    await subscribers_service.create_subscriber(
+        session, actor_id=actor.id, username="bob", full_name="Bob", password="radpass123"
+    )
+    rows = (await session.execute(select(AuditLog))).scalars().all()
+    assert any(
+        e.action == "create" and e.resource == "subscribers" and e.admin_id == actor.id
+        for e in rows
+    )
