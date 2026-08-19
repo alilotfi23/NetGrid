@@ -2,11 +2,13 @@
  * Server-side API helpers for the NetGrid dashboard.
  *
  * These run only in server components / route handlers: the backend requires
- * a bearer token, so the credential is read from the environment here and
- * never shipped to the browser. A real admin auth flow (login page, token
- * storage, refresh) arrives with Phase 12; NETGRID_DEMO_TOKEN is the dev
- * bootstrap until then.
+ * a bearer token, so the credential is read from the admin session cookie
+ * (set by the login flow) and never shipped to the browser.
  */
+
+import { cookies } from "next/headers";
+
+import { ACCESS_COOKIE } from "./auth";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8000";
 
@@ -63,15 +65,17 @@ export function backendUrl(): string {
   return process.env.BACKEND_URL ?? DEFAULT_BACKEND_URL;
 }
 
-export function demoToken(): string | undefined {
-  return process.env.NETGRID_DEMO_TOKEN;
+/** The admin session access token from the HttpOnly cookie. */
+export async function getSessionToken(): Promise<string | undefined> {
+  const cookieStore = await cookies();
+  return cookieStore.get(ACCESS_COOKIE)?.value;
 }
 
-/** Fetch the backend with the server-side bearer token; throws ApiError on !ok. */
+/** Fetch the backend with the session bearer token; throws ApiError on !ok. */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = demoToken();
+  const token = await getSessionToken();
   if (!token) {
-    throw new Error("NETGRID_DEMO_TOKEN is not configured");
+    throw new Error("No active session — log in first");
   }
   const res = await fetch(`${backendUrl()}${path}`, {
     ...init,

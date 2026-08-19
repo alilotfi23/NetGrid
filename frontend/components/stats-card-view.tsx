@@ -26,7 +26,7 @@ export function StatsCardView({
         </h2>
         <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
         <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-          Set NETGRID_DEMO_TOKEN (an admin access token) for the server-side fetch.
+          Sign in to the dashboard to refresh the session.
         </p>
       </section>
     );

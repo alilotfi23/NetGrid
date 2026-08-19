@@ -63,7 +63,6 @@ services:
     build: ./frontend
     environment:
       BACKEND_URL: http://backend:8000
-      NETGRID_DEMO_TOKEN: ${NETGRID_DEMO_TOKEN:-}
     ports:
       - "3000:3000"
     depends_on:

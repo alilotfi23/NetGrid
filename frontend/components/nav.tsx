@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { SignOutButton } from "./sign-out-button";
+
 const links = [
   { href: "/", label: "Dashboard" },
   { href: "/subscribers", label: "Subscribers" },
@@ -13,7 +15,7 @@ export function Nav() {
         <Link href="/" className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           NetGrid
         </Link>
-        <nav className="flex gap-5 text-sm">
+        <nav className="flex items-center gap-5 text-sm">
           {links.map(({ href, label }) => (
             <Link
               key={href}
@@ -23,6 +25,7 @@ export function Nav() {
               {label}
             </Link>
           ))}
+          <SignOutButton />
         </nav>
       </div>
     </header>

@@ -24,19 +24,33 @@ const STATS = {
   ],
 };
 
+// The session token comes from the HttpOnly cookie (see lib/auth.ts).
+const { sessionCookie } = vi.hoisted((): { sessionCookie: { value: string | undefined } } => ({
+  sessionCookie: { value: "tok123" },
+}));
+
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    // next/headers cookies().get() returns { name, value } or undefined
+    get: (name: string) =>
+      name === "netgrid_access" && sessionCookie.value
+        ? { name, value: sessionCookie.value }
+        : undefined,
+  }),
+}));
+
 function mockFetch(response: Partial<Response>): void {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
 }
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  delete process.env.NETGRID_DEMO_TOKEN;
+  sessionCookie.value = "tok123";
   delete process.env.BACKEND_URL;
 });
 
 describe("getSubscriberStats", () => {
   it("fetches with bearer auth and no-store caching, returning parsed stats", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: true, json: async () => STATS });
 
     const stats = await getSubscriberStats();
@@ -53,7 +67,6 @@ describe("getSubscriberStats", () => {
   });
 
   it("uses BACKEND_URL when set", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     process.env.BACKEND_URL = "http://backend:8000";
     mockFetch({ ok: true, json: async () => STATS });
 
@@ -65,13 +78,13 @@ describe("getSubscriberStats", () => {
     );
   });
 
-  it("throws when the token is missing", async () => {
+  it("throws when there is no session cookie", async () => {
+    sessionCookie.value = undefined;
     mockFetch({ ok: true, json: async () => STATS });
-    await expect(getSubscriberStats()).rejects.toThrow("NETGRID_DEMO_TOKEN");
+    await expect(getSubscriberStats()).rejects.toThrow("No active session");
   });
 
   it("throws on a non-OK response", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: false, status: 403 });
     await expect(getSubscriberStats()).rejects.toThrow("HTTP 403");
   });
@@ -79,13 +92,11 @@ describe("getSubscriberStats", () => {
 
 describe("loadSubscriberStats", () => {
   it("returns the stats on success", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: true, json: async () => STATS });
     await expect(loadSubscriberStats()).resolves.toEqual({ ok: true, stats: STATS });
   });
 
   it("returns an error result instead of throwing", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: false, status: 401 });
     const result = await loadSubscriberStats();
     expect(result).toEqual({ ok: false, error: "request failed: HTTP 401" });
@@ -109,7 +120,6 @@ describe("plan helpers", () => {
   };
 
   it("getPlans returns the items of the paginated response", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: true, json: async () => ({ items: [PLAN], total: 1, page: 1, page_size: 20 }) });
 
     await expect(getPlans()).resolves.toEqual([PLAN]);
@@ -123,7 +133,6 @@ describe("plan helpers", () => {
   });
 
   it("createPlan POSTs the payload and returns the created plan", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: true, status: 201, json: async () => PLAN });
 
     const created = await createPlan({ name: "Starter", price: "9.99" });
@@ -134,7 +143,6 @@ describe("plan helpers", () => {
   });
 
   it("maps a backend error envelope to ApiError", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({
       ok: false,
       status: 409,
@@ -182,7 +190,6 @@ describe("subscriber helpers", () => {
   };
 
   it("getSubscribers returns the paginated items", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({
       ok: true,
       json: async () => ({ items: [SUBSCRIBER], total: 1, page: 1, page_size: 100 }),
@@ -199,7 +206,6 @@ describe("subscriber helpers", () => {
   });
 
   it("loadSubscribers returns an error result instead of throwing", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: false, status: 403 });
     expect(await loadSubscribers()).toEqual({
       ok: false,
@@ -208,7 +214,6 @@ describe("subscriber helpers", () => {
   });
 
   it("loadSubscriberHistory fetches the profile history endpoint", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: true, json: async () => HISTORY });
 
     expect(await loadSubscriberHistory(7)).toEqual({ ok: true, history: HISTORY });
@@ -219,7 +224,6 @@ describe("subscriber helpers", () => {
   });
 
   it("loadSubscriberSessions fetches the live sessions endpoint", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: true, json: async () => [SESSION] });
 
     expect(await loadSubscriberSessions(7)).toEqual({ ok: true, sessions: [SESSION] });
@@ -230,7 +234,6 @@ describe("subscriber helpers", () => {
   });
 
   it("loadSubscriberSessions surfaces backend errors", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: false, status: 404 });
     expect(await loadSubscriberSessions(999)).toEqual({
       ok: false,
@@ -239,7 +242,6 @@ describe("subscriber helpers", () => {
   });
 
   it("createSubscriber POSTs the payload and returns the created subscriber", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: true, status: 201, json: async () => SUBSCRIBER });
 
     const created = await createSubscriber({
@@ -261,7 +263,6 @@ describe("subscriber helpers", () => {
   });
 
   it("updateSubscriber PATCHes to the subscriber endpoint", async () => {
-    process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: true, json: async () => ({ ...SUBSCRIBER, status: "suspended" }) });
 
     const updated = await updateSubscriber(7, { status: "suspended" });

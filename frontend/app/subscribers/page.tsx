@@ -51,8 +51,8 @@ export default async function SubscribersPage() {
 
         {!subs.ok ? (
           <p className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-            Couldn&apos;t load subscribers: {subs.error}. Set <code>NETGRID_DEMO_TOKEN</code> (see
-            the frontend README) and ensure the backend is reachable.
+            Couldn&apos;t load subscribers: {subs.error}. Sign in to the dashboard to refresh the
+            session and ensure the backend is reachable.
           </p>
         ) : subs.subscribers.length === 0 ? (
           <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400">No subscribers yet.</p>
