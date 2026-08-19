@@ -8,9 +8,9 @@ removed on change). Assigning a subscriber to a plan writes `radusergroup` —
 that lives in `app/services/subscribers.py`.
 
 The attribute mapping is deliberate and documented in CLAUDE.md:
-  WISPr-Bandwidth-Max-Down/Up  (kbps, integer)  <- bandwidth_down/up_mbps * 1000
-  ChilliSpot-Max-Total-Octets  (bytes, integer) <- quota_gb * 1e9 (when set)
-Both attributes exist in the FreeRADIUS container's shipped dictionaries.
+  WISPr-Bandwidth-Max-Down/Up    (kbps, integer)   <- bandwidth_down/up_mbps * 1000
+  Mikrotik-Total-Limit + Gigawords (64-bit byte pair) <- quota_gb * 1e9 (when set)
+The attributes exist in the FreeRADIUS container's shipped dictionaries.
 `name` and `radius_group` are immutable after creation (they are the plan's
 identity in our schema and in RADIUS); rename = recreate.
 """
@@ -28,10 +28,12 @@ from app.services import audit as audit_service
 
 RAD_DOWN_ATTR = "WISPr-Bandwidth-Max-Down"
 RAD_UP_ATTR = "WISPr-Bandwidth-Max-Up"
-RAD_QUOTA_ATTR = "ChilliSpot-Max-Total-Octets"
+RAD_QUOTA_LIMIT_ATTR = "Mikrotik-Total-Limit"
+RAD_QUOTA_GIGAWORDS_ATTR = "Mikrotik-Total-Limit-Gigawords"
 RAD_OP_SET = "="
 KBPS_PER_MBPS = 1000
 BYTES_PER_GB = 1_000_000_000
+_32BIT = 2**32
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +69,13 @@ async def get_plan_or_404(session: AsyncSession, plan_id: int) -> Plan:
 
 
 def _group_replies(plan: Plan) -> list[RadGroupReply]:
-    """The radgroupreply rows a plan's group should carry."""
+    """The radgroupreply rows a plan's group should carry.
+
+    Quota is written as the Mikrotik 64-bit pair (Total-Limit = low 32 bits,
+    Total-Limit-Gigawords = high 32 bits) because a 32-bit octet counter
+    overflows at ~4 GiB — a 100 GB quota would wrap. Verified live: the pair
+    round-trips through FreeRADIUS into Access-Accept.
+    """
     replies = [
         RadGroupReply(
             groupname=plan.radius_group,
@@ -83,12 +91,21 @@ def _group_replies(plan: Plan) -> list[RadGroupReply]:
         ),
     ]
     if plan.quota_gb is not None:
+        quota_bytes = plan.quota_gb * BYTES_PER_GB
         replies.append(
             RadGroupReply(
                 groupname=plan.radius_group,
-                attribute=RAD_QUOTA_ATTR,
+                attribute=RAD_QUOTA_LIMIT_ATTR,
                 op=RAD_OP_SET,
-                value=str(plan.quota_gb * BYTES_PER_GB),
+                value=str(quota_bytes % _32BIT),
+            )
+        )
+        replies.append(
+            RadGroupReply(
+                groupname=plan.radius_group,
+                attribute=RAD_QUOTA_GIGAWORDS_ATTR,
+                op=RAD_OP_SET,
+                value=str(quota_bytes // _32BIT),
             )
         )
     return replies

@@ -84,9 +84,11 @@ async def test_superadmin_full_lifecycle(client, session):
     assert {r.attribute for r in rows} == {
         "WISPr-Bandwidth-Max-Down",
         "WISPr-Bandwidth-Max-Up",
-        "ChilliSpot-Max-Total-Octets",
+        "Mikrotik-Total-Limit",
+        "Mikrotik-Total-Limit-Gigawords",
     }
-    assert {r.value for r in rows} == {"10000", "5000", "100000000000"}
+    # 100 GB quota as the 64-bit pair (low 32 bits / gigawords)
+    assert {r.value for r in rows} == {"10000", "5000", "1215752192", "23"}
 
     resp = await client.get("/api/v1/plans", headers=_auth(token))
     assert resp.status_code == 200

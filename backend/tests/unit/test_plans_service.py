@@ -14,7 +14,8 @@ from app.services import plans as plans_service
 
 RAD_DOWN = plans_service.RAD_DOWN_ATTR
 RAD_UP = plans_service.RAD_UP_ATTR
-RAD_QUOTA = plans_service.RAD_QUOTA_ATTR
+RAD_QUOTA = plans_service.RAD_QUOTA_LIMIT_ATTR
+RAD_QUOTA_GW = plans_service.RAD_QUOTA_GIGAWORDS_ATTR
 
 
 async def _seed_actor(session, username="actor") -> Admin:
@@ -56,11 +57,13 @@ async def test_create_writes_plan_and_group_replies(session):
 
     assert plan.radius_group == "rad_starter"
     rows = await _reply_rows(session, "rad_starter")
-    assert {r.attribute for r in rows} == {RAD_DOWN, RAD_UP, RAD_QUOTA}
+    assert {r.attribute for r in rows} == {RAD_DOWN, RAD_UP, RAD_QUOTA, RAD_QUOTA_GW}
     by_attr = {r.attribute: r.value for r in rows}
     assert by_attr[RAD_DOWN] == "10000"  # 10 Mbps -> kbps
     assert by_attr[RAD_UP] == "5000"  # 5 Mbps -> kbps
-    assert by_attr[RAD_QUOTA] == "100000000000"  # 100 GB -> bytes
+    # 100 GB as the Mikrotik 64-bit pair: low 32 bits + gigawords (high 32 bits)
+    assert by_attr[RAD_QUOTA] == "1215752192"
+    assert by_attr[RAD_QUOTA_GW] == "23"
     assert all(r.op == "=" for r in rows)
     # radgroupcheck stays empty (no check attributes on plans yet)
     checks = (
@@ -79,6 +82,7 @@ async def test_create_without_quota_skips_quota_row(session):
     actor = await _seed_actor(session)
     await _create_plan(session, actor.id, quota_gb=None)
     assert await _reply_rows(session, "rad_starter", RAD_QUOTA) == []
+    assert await _reply_rows(session, "rad_starter", RAD_QUOTA_GW) == []
     assert len(await _reply_rows(session, "rad_starter")) == 2
 
 
