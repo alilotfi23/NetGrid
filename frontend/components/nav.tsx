@@ -7,6 +7,7 @@ const links = [
   { href: "/subscribers", label: "Subscribers" },
   { href: "/plans", label: "Plans" },
   { href: "/nas-devices", label: "NAS Devices" },
+  { href: "/sessions", label: "Sessions" },
 ];
 
 export function Nav() {

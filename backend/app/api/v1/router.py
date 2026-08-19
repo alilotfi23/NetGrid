@@ -7,6 +7,7 @@ from .nas_devices import router as nas_devices_router
 from .plans import router as plans_router
 from .roles import permissions_router
 from .roles import router as roles_router
+from .sessions import router as sessions_router
 from .subscribers import router as subscribers_router
 
 api_router = APIRouter()
@@ -18,3 +19,4 @@ api_router.include_router(permissions_router)
 api_router.include_router(plans_router)
 api_router.include_router(nas_devices_router)
 api_router.include_router(subscribers_router)
+api_router.include_router(sessions_router)

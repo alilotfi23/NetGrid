@@ -7,10 +7,12 @@ import {
   deleteNasDevice,
   getNasDevices,
   getPlans,
+  getSessions,
   getSubscriberStats,
   getSubscribers,
   loadNasDevice,
   loadNasDevices,
+  loadSessions,
   loadSubscriberHistory,
   loadSubscribers,
   loadSubscriberSessions,
@@ -410,6 +412,61 @@ describe("NAS device helpers", () => {
     expect(url).toBe("http://localhost:8000/api/v1/nas-devices/3");
     expect(init?.method).toBe("PATCH");
     expect(JSON.parse(String(init?.body))).toEqual({ is_active: false });
+  });
+
+  it("getSessions returns the paginated items plus session stats", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 100,
+        stats: { total: 0, by_nas: [] },
+      }),
+    });
+
+    await expect(getSessions()).resolves.toEqual({
+      sessions: [],
+      stats: { total: 0, by_nas: [] },
+    });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/sessions?page_size=100",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("loadSessions returns sessions and stats on success", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({
+        items: [{ id: 1, username: "bob" }],
+        total: 1,
+        page: 1,
+        page_size: 100,
+        stats: {
+          total: 1,
+          by_nas: [{ nasipaddress: "192.168.0.10", count: 1 }],
+        },
+      }),
+    });
+
+    await expect(loadSessions()).resolves.toEqual({
+      ok: true,
+      sessions: [{ id: 1, username: "bob" }],
+      stats: { total: 1, by_nas: [{ nasipaddress: "192.168.0.10", count: 1 }] },
+    });
+  });
+
+  it("loadSessions returns an error result instead of throwing", async () => {
+    mockFetch({ ok: false, status: 403 });
+    expect(await loadSessions()).toEqual({
+      ok: false,
+      error: "request failed: HTTP 403",
+    });
   });
 
   it("deleteNasDevice DELETEs without a body", async () => {

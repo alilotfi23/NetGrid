@@ -259,6 +259,35 @@ export async function getSubscriberSessions(id: number): Promise<LiveSession[]> 
   return (await res.json()) as LiveSession[];
 }
 
+export type SessionNasCount = {
+  nasipaddress: string;
+  count: number;
+};
+
+export type SessionStats = {
+  total: number;
+  by_nas: SessionNasCount[];
+};
+
+export async function getSessions(): Promise<{ sessions: LiveSession[]; stats: SessionStats }> {
+  const res = await apiFetch("/api/v1/sessions?page_size=100");
+  const page = (await res.json()) as { items: LiveSession[]; stats: SessionStats };
+  return { sessions: page.items, stats: page.stats };
+}
+
+export type SessionsResult =
+  | { ok: true; sessions: LiveSession[]; stats: SessionStats }
+  | { ok: false; error: string };
+
+export async function loadSessions(): Promise<SessionsResult> {
+  try {
+    const { sessions, stats } = await getSessions();
+    return { ok: true, sessions, stats };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
 /** Mutations — called from route handlers (never from the browser directly). */
 export async function createSubscriber(payload: unknown): Promise<Subscriber> {
   const res = await apiFetch("/api/v1/subscribers", {
