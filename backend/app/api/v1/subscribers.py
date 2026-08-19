@@ -40,12 +40,13 @@ async def subscriber_stats(
 ) -> SubscriberStats:
     """GET /api/v1/subscribers/stats — requires subscribers:read.
 
-    Returns active/suspended/expired counts plus a per-plan breakdown
-    for the dashboard.
+    Returns active/suspended/expired counts plus a per-plan breakdown and
+    a status-by-plan matrix for the dashboard.
     """
     counts = await subscribers_service.get_subscriber_stats(session)
     by_plan = await subscribers_service.get_subscriber_plan_counts(session)
-    return SubscriberStats(**counts, by_plan=by_plan)
+    by_plan_status = await subscribers_service.get_subscriber_plan_status_counts(session)
+    return SubscriberStats(**counts, by_plan=by_plan, by_plan_status=by_plan_status)
 
 
 @router.get("", response_model=Page[SubscriberOut])

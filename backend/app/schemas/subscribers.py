@@ -17,13 +17,24 @@ class PlanSubscriberCount(BaseModel):
     count: int
 
 
+class PlanStatusCount(BaseModel):
+    """One cell of the status-by-plan matrix: subscribers of one status on one plan."""
+
+    plan_id: int | None
+    plan_name: str | None
+    status: str
+    count: int
+
+
 class SubscriberStats(BaseModel):
     """Status-count snapshot for the dashboard.
 
     Counts the three known statuses (active | suspended | expired); total is
     the count of all subscriber rows, so it stays correct even if an unknown
     status value appears in the data. `by_plan` breaks the total down per
-    plan (all statuses); subscribers without a plan have plan_id None.
+    plan (all statuses); `by_plan_status` is the status-by-plan matrix (one
+    row per non-empty plan+status cell). Subscribers without a plan have
+    plan_id None.
     """
 
     active: int
@@ -31,6 +42,7 @@ class SubscriberStats(BaseModel):
     expired: int
     total: int
     by_plan: list[PlanSubscriberCount] = Field(default_factory=list)
+    by_plan_status: list[PlanStatusCount] = Field(default_factory=list)
 
 
 class SubscriberOut(BaseModel):

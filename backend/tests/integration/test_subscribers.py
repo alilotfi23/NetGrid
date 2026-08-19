@@ -67,6 +67,11 @@ async def test_stats_returns_counts_for_reader(client, session):
         "expired": 1,
         "total": 4,
         "by_plan": [{"plan_id": None, "plan_name": None, "count": 4}],
+        "by_plan_status": [
+            {"plan_id": None, "plan_name": None, "status": "active", "count": 2},
+            {"plan_id": None, "plan_name": None, "status": "expired", "count": 1},
+            {"plan_id": None, "plan_name": None, "status": "suspended", "count": 1},
+        ],
     }
 
 
@@ -75,7 +80,14 @@ async def test_stats_empty_db(client, session):
     token = await _login(client)
     resp = await client.get("/api/v1/subscribers/stats", headers=_auth(token))
     assert resp.status_code == 200
-    assert resp.json() == {"active": 0, "suspended": 0, "expired": 0, "total": 0, "by_plan": []}
+    assert resp.json() == {
+        "active": 0,
+        "suspended": 0,
+        "expired": 0,
+        "total": 0,
+        "by_plan": [],
+        "by_plan_status": [],
+    }
 
 
 async def test_stats_requires_authentication(client, session):
@@ -113,6 +125,13 @@ async def test_stats_includes_plan_breakdown(client, session):
     assert body["by_plan"] == [
         {"plan_id": plan.id, "plan_name": "Starter", "count": 2},
         {"plan_id": None, "plan_name": None, "count": 1},
+    ]
+    # the status-by-plan matrix: per-status counts per plan, e.g. the
+    # dashboard can read "suspended on Starter" directly
+    assert body["by_plan_status"] == [
+        {"plan_id": plan.id, "plan_name": "Starter", "status": "active", "count": 1},
+        {"plan_id": plan.id, "plan_name": "Starter", "status": "suspended", "count": 1},
+        {"plan_id": None, "plan_name": None, "status": "active", "count": 1},
     ]
 
 

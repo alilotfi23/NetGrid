@@ -260,6 +260,29 @@ async def get_subscriber_plan_counts(
     ]
 
 
+async def get_subscriber_plan_status_counts(
+    session: AsyncSession,
+) -> list[dict[str, str | int | None]]:
+    """Count subscribers grouped by (plan, status) — the status-by-plan matrix.
+
+    One row per non-empty cell, ordered by plan id (unassigned last) then
+    status. The dashboard can pivot this into a stacked per-plan chart.
+    """
+    rows = (
+        await session.execute(
+            select(Plan.id, Plan.name, Subscriber.status, func.count(Subscriber.id))
+            .select_from(Subscriber)
+            .outerjoin(Plan, Plan.id == Subscriber.plan_id)
+            .group_by(Plan.id, Plan.name, Subscriber.status)
+            .order_by(Plan.id, Subscriber.status)
+        )
+    ).all()
+    return [
+        {"plan_id": plan_id, "plan_name": plan_name, "status": status, "count": int(count)}
+        for plan_id, plan_name, status, count in rows
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

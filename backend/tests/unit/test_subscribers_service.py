@@ -101,6 +101,24 @@ async def test_get_subscriber_plan_counts_empty_db(session):
     assert await subscribers_service.get_subscriber_plan_counts(session) == []
 
 
+async def test_get_subscriber_plan_status_counts(session):
+    p1 = await _seed_plan(session, "Starter")
+    await _seed(session, "a1", "active", plan_id=p1.id)
+    await _seed(session, "a2", "suspended", plan_id=p1.id)
+    await _seed(session, "e1", "expired")  # unassigned
+
+    matrix = await subscribers_service.get_subscriber_plan_status_counts(session)
+    assert matrix == [
+        {"plan_id": p1.id, "plan_name": "Starter", "status": "active", "count": 1},
+        {"plan_id": p1.id, "plan_name": "Starter", "status": "suspended", "count": 1},
+        {"plan_id": None, "plan_name": None, "status": "expired", "count": 1},
+    ]
+
+
+async def test_get_subscriber_plan_status_counts_empty_db(session):
+    assert await subscribers_service.get_subscriber_plan_status_counts(session) == []
+
+
 async def test_create_writes_profile_and_radius_password(session):
     actor = await _seed_actor(session)
     subscriber = await subscribers_service.create_subscriber(
