@@ -64,6 +64,7 @@ class LiveSessionOut(BaseModel):
     id: int
     username: str | None = None
     nasipaddress: str | None = None
+    nas_shortname: str | None = None  # from the nas table; null when unknown
     acctstarttime: datetime | None = None
     acctsessiontime: int | None = None
     acctinputoctets: int | None = None

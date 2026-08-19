@@ -53,12 +53,19 @@ export function SessionsCardView({
         </p>
       ) : (
         <ul className="mt-4 space-y-3">
-          {stats.by_nas.map(({ nasipaddress, count }) => (
+          {stats.by_nas.map(({ nasipaddress, nas_shortname, count }) => (
             <li key={nasipaddress} className="text-sm">
               <div className="flex items-baseline justify-between text-zinc-700 dark:text-zinc-300">
-                <span className="tabular-nums">{nasipaddress}</span>
+                <span className={nas_shortname ? "font-medium" : "tabular-nums"}>
+                  {nas_shortname ?? nasipaddress}
+                </span>
                 <span className="tabular-nums text-zinc-500 dark:text-zinc-400">{count}</span>
               </div>
+              {nas_shortname && (
+                <div className="mt-0.5 text-xs tabular-nums text-zinc-400 dark:text-zinc-500">
+                  {nasipaddress}
+                </div>
+              )}
               <div className="mt-1 h-1.5 w-full rounded-full bg-zinc-100 dark:bg-zinc-900">
                 <div
                   className="h-1.5 rounded-full bg-indigo-500"

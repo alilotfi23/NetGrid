@@ -485,7 +485,7 @@ describe("NAS device helpers", () => {
         page_size: 100,
         stats: {
           total: 1,
-          by_nas: [{ nasipaddress: "192.168.0.10", count: 1 }],
+          by_nas: [{ nasipaddress: "192.168.0.10", count: 1, nas_shortname: "edge-r1" }],
         },
       }),
     });
@@ -493,7 +493,10 @@ describe("NAS device helpers", () => {
     await expect(loadSessions()).resolves.toEqual({
       ok: true,
       sessions: [{ id: 1, username: "bob" }],
-      stats: { total: 1, by_nas: [{ nasipaddress: "192.168.0.10", count: 1 }] },
+      stats: {
+        total: 1,
+        by_nas: [{ nasipaddress: "192.168.0.10", count: 1, nas_shortname: "edge-r1" }],
+      },
     });
   });
 

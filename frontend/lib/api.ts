@@ -197,6 +197,7 @@ export type LiveSession = {
   id: number;
   username: string | null;
   nasipaddress: string | null;
+  nas_shortname: string | null;
   acctstarttime: string | null;
   acctsessiontime: number | null;
   acctinputoctets: number | null;
@@ -269,6 +270,7 @@ export async function getSubscriberSessions(id: number): Promise<LiveSession[]> 
 export type SessionNasCount = {
   nasipaddress: string;
   count: number;
+  nas_shortname: string | null;
 };
 
 export type SessionStats = {

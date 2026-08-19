@@ -48,7 +48,10 @@ async def list_sessions(
         page_size=page_size,
         stats=SessionStats(
             total=total_count,
-            by_nas=[SessionNasCount(nasipaddress=nas, count=count) for nas, count in by_nas],
+            by_nas=[
+                SessionNasCount(nasipaddress=nas, count=count, nas_shortname=shortname)
+                for nas, count, shortname in by_nas
+            ],
         ),
     )
 

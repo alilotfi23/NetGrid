@@ -28,7 +28,20 @@ function SessionTable({ sessions }: { sessions: LiveSession[] }) {
               <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-50">
                 {s.username ?? "—"}
               </td>
-              <td className="px-4 py-3 tabular-nums">{s.nasipaddress ?? "—"}</td>
+              <td className="px-4 py-3">
+                {s.nas_shortname ? (
+                  <>
+                    <div className="font-medium text-zinc-900 dark:text-zinc-50">
+                      {s.nas_shortname}
+                    </div>
+                    <div className="text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+                      {s.nasipaddress}
+                    </div>
+                  </>
+                ) : (
+                  <span className="tabular-nums">{s.nasipaddress ?? "—"}</span>
+                )}
+              </td>
               <td className="px-4 py-3 tabular-nums">{s.framedipaddress ?? "—"}</td>
               <td className="px-4 py-3">{formatDate(s.acctstarttime)}</td>
               <td className="px-4 py-3 tabular-nums">{formatDuration(s.acctsessiontime)}</td>

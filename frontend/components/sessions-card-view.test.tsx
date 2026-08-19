@@ -10,8 +10,8 @@ describe("SessionsCardView", () => {
         stats={{
           total: 3,
           by_nas: [
-            { nasipaddress: "192.168.0.10", count: 2 },
-            { nasipaddress: "192.168.0.11", count: 1 },
+            { nasipaddress: "192.168.0.10", count: 2, nas_shortname: "edge-r1" },
+            { nasipaddress: "192.168.0.11", count: 1, nas_shortname: null },
           ],
         }}
       />,
@@ -19,9 +19,25 @@ describe("SessionsCardView", () => {
 
     expect(screen.getByRole("heading", { name: "Live Sessions" })).toBeTruthy();
     expect(screen.getByText("3 active")).toBeTruthy();
-    expect(screen.getByText("192.168.0.10")).toBeTruthy();
+    expect(screen.getByText("edge-r1")).toBeTruthy();
     expect(screen.getByText("2")).toBeTruthy();
+    // unknown NASes fall back to the raw IP
     expect(screen.getByText("192.168.0.11")).toBeTruthy();
+    expect(screen.getByText("1")).toBeTruthy();
+  });
+
+  it("shows the resolved shortname with the IP as secondary text", () => {
+    render(
+      <SessionsCardView
+        stats={{
+          total: 1,
+          by_nas: [{ nasipaddress: "192.168.0.10", count: 1, nas_shortname: "edge-r1" }],
+        }}
+      />,
+    );
+
+    const row = screen.getByText("edge-r1").closest("li");
+    expect(row?.textContent).toContain("192.168.0.10");
   });
 
   it("links the heading to the sessions page", () => {

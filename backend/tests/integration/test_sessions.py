@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.security import encrypt_secret, hash_password
 from app.models.audit import AuditLog
 from app.models.nas import NasDevice
-from app.models.radius import RadAcct
+from app.models.radius import Nas, RadAcct
 from app.models.rbac import Admin, Permission, Role
 from app.services import disconnect as disconnect_service
 
@@ -102,13 +102,41 @@ async def test_sessions_list_with_stats(client, session):
     assert body["stats"] == {
         "total": 3,
         "by_nas": [
-            {"nasipaddress": "192.168.0.10", "count": 2},
-            {"nasipaddress": "192.168.0.11", "count": 1},
+            {"nasipaddress": "192.168.0.10", "count": 2, "nas_shortname": None},
+            {"nasipaddress": "192.168.0.11", "count": 1, "nas_shortname": None},
         ],
     }
     # inet columns surface as plain strings
     assert body["items"][0]["nasipaddress"] == "192.168.0.10"
+    assert body["items"][0]["nas_shortname"] is None
     assert body["items"][0]["framedipaddress"] == "10.0.0.6"
+
+
+async def test_sessions_resolve_nas_shortnames(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    session.add(
+        Nas(nasname="192.168.0.10", shortname="edge-r1", type="mikrotik", secret="radius_secret")
+    )
+    _seed_sessions(session)
+    await session.commit()
+
+    resp = await client.get("/api/v1/sessions", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    by_ip = {s["nasipaddress"]: s["nas_shortname"] for s in body["items"]}
+    assert by_ip["192.168.0.10"] == "edge-r1"
+    assert by_ip["192.168.0.11"] is None
+    assert body["stats"]["by_nas"] == [
+        {"nasipaddress": "192.168.0.10", "count": 2, "nas_shortname": "edge-r1"},
+        {"nasipaddress": "192.168.0.11", "count": 1, "nas_shortname": None},
+    ]
+
+    # q matches the resolved shortname too
+    resp = await client.get("/api/v1/sessions?q=edge-r1", headers=_auth(token))
+    body = resp.json()
+    assert body["total"] == 2
+    assert {s["username"] for s in body["items"]} == {"bob", "carol"}
 
 
 async def test_sessions_search_and_pagination(client, session):

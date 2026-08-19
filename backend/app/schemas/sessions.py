@@ -19,10 +19,15 @@ class DisconnectResult(BaseModel):
 
 
 class SessionNasCount(BaseModel):
-    """Open sessions grouped by the NAS they run on."""
+    """Open sessions grouped by the NAS they run on.
+
+    nas_shortname is the device's shortname from the nas table (joined on
+    nasname), or None when the NAS IP has no row there.
+    """
 
     nasipaddress: str
     count: int
+    nas_shortname: str | None = None
 
 
 class SessionStats(BaseModel):
