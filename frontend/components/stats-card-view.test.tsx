@@ -13,6 +13,11 @@ const STATS: SubscriberStats = {
     { plan_id: 1, plan_name: "Starter", count: 2 },
     { plan_id: null, plan_name: null, count: 2 },
   ],
+  by_plan_status: [
+    { plan_id: 1, plan_name: "Starter", status: "active", count: 2 },
+    { plan_id: null, plan_name: null, status: "expired", count: 1 },
+    { plan_id: null, plan_name: null, status: "suspended", count: 1 },
+  ],
 };
 
 describe("StatsCardView", () => {

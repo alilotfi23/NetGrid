@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getSubscriberStats, loadSubscriberStats } from "./api";
+import { createPlan, getPlans, getSubscriberStats, loadSubscriberStats } from "./api";
 
 const STATS = {
   active: 2,
@@ -35,7 +35,7 @@ describe("getSubscriberStats", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/subscribers/stats",
       expect.objectContaining({
-        headers: { Authorization: "Bearer tok123" },
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
         cache: "no-store",
       }),
     );
@@ -77,6 +77,63 @@ describe("loadSubscriberStats", () => {
     process.env.NETGRID_DEMO_TOKEN = "tok123";
     mockFetch({ ok: false, status: 401 });
     const result = await loadSubscriberStats();
-    expect(result).toEqual({ ok: false, error: "subscriber stats request failed: HTTP 401" });
+    expect(result).toEqual({ ok: false, error: "request failed: HTTP 401" });
+  });
+});
+
+describe("plan helpers", () => {
+  const PLAN = {
+    id: 1,
+    name: "Starter",
+    radius_group: "rad_starter",
+    price: "9.99",
+    duration_days: 30,
+    bandwidth_down_mbps: 10,
+    bandwidth_up_mbps: 5,
+    quota_gb: 100,
+    description: null,
+    is_active: true,
+    created_at: "2026-08-19T00:00:00",
+  };
+
+  it("getPlans returns the items of the paginated response", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({ ok: true, json: async () => ({ items: [PLAN], total: 1, page: 1, page_size: 20 }) });
+
+    await expect(getPlans()).resolves.toEqual([PLAN]);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/plans",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("createPlan POSTs the payload and returns the created plan", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({ ok: true, status: 201, json: async () => PLAN });
+
+    const created = await createPlan({ name: "Starter", price: "9.99" });
+    expect(created).toEqual(PLAN);
+    const [, init] = vi.mocked(fetch).mock.calls[0];
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ name: "Starter", price: "9.99" });
+  });
+
+  it("maps a backend error envelope to ApiError", async () => {
+    process.env.NETGRID_DEMO_TOKEN = "tok123";
+    mockFetch({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: { code: "CONFLICT", message: "Plan name or radius group already exists" } }),
+    });
+
+    await expect(createPlan({})).rejects.toMatchObject({
+      name: "ApiError",
+      status: 409,
+      code: "CONFLICT",
+      message: "Plan name or radius group already exists",
+    });
   });
 });
