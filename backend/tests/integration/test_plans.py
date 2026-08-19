@@ -226,6 +226,54 @@ async def test_invalid_payload_422(client, session):
     assert resp.json()["name"] == "Starter"
 
 
+async def test_list_includes_subscriber_counts(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    starter = await _create_plan_via_api(client, token)
+    pro = await _create_plan_via_api(client, token, name="Pro", radius_group="rad_pro")
+
+    # two subscribers on Starter, one on Pro, one unassigned
+    for username in ("bob", "alice"):
+        resp = await client.post(
+            "/api/v1/subscribers",
+            json={
+                "username": username,
+                "full_name": username,
+                "password": "radpass123",
+                "plan_id": starter["id"],
+            },
+            headers=_auth(token),
+        )
+        assert resp.status_code == 201, resp.text
+    resp = await client.post(
+        "/api/v1/subscribers",
+        json={
+            "username": "carol",
+            "full_name": "Carol",
+            "password": "radpass123",
+            "plan_id": pro["id"],
+        },
+        headers=_auth(token),
+    )
+    assert resp.status_code == 201
+    await client.post(
+        "/api/v1/subscribers",
+        json={"username": "dave", "full_name": "Dave", "password": "radpass123"},
+        headers=_auth(token),
+    )
+
+    resp = await client.get("/api/v1/plans", headers=_auth(token))
+    assert resp.status_code == 200
+    by_id = {p["id"]: p for p in resp.json()["items"]}
+    assert by_id[starter["id"]]["subscriber_count"] == 2
+    assert by_id[pro["id"]]["subscriber_count"] == 1
+
+    # the single-plan endpoint reports the same count
+    resp = await client.get(f"/api/v1/plans/{starter['id']}", headers=_auth(token))
+    assert resp.status_code == 200
+    assert resp.json()["subscriber_count"] == 2
+
+
 async def test_auditor_read_only(client, session):
     await _seed_admin(session, "boss", ["*:*"])
     super_token = await _login(client)

@@ -56,6 +56,7 @@ export type Plan = {
   description: string | null;
   is_active: boolean;
   created_at: string;
+  subscriber_count: number;
 };
 
 export function backendUrl(): string {

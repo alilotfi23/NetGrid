@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ConflictError, NotFoundError
 from app.models.plan import Plan
 from app.models.radius import RadGroupCheck, RadGroupReply
+from app.models.subscriber import Subscriber
 from app.services import audit as audit_service
 
 RAD_DOWN_ATTR = "WISPr-Bandwidth-Max-Down"
@@ -61,6 +62,22 @@ async def get_plan_or_404(session: AsyncSession, plan_id: int) -> Plan:
     if plan is None:
         raise NotFoundError("Plan not found")
     return plan
+
+
+async def get_subscriber_counts(session: AsyncSession) -> dict[int, int]:
+    """Count subscribers per plan (plan_id -> count), for the plans list.
+
+    Plans with no subscribers are absent from the result — callers default
+    to 0. One grouped query over subscribers.plan_id.
+    """
+    rows = (
+        await session.execute(
+            select(Subscriber.plan_id, func.count())
+            .where(Subscriber.plan_id.is_not(None))
+            .group_by(Subscriber.plan_id)
+        )
+    ).all()
+    return {plan_id: int(count) for plan_id, count in rows}
 
 
 # ---------------------------------------------------------------------------

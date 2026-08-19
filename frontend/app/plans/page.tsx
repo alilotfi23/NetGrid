@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { Nav } from "@/components/nav";
-import { loadPlans } from "@/lib/api";
+import { type Plan, loadPlans } from "@/lib/api";
 
 // Live data fetched with a runtime token — never prerender (see app/page.tsx).
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 function PlanTable({
   plans,
 }: {
-  plans: { id: number; name: string; radius_group: string; price: string; duration_days: number; bandwidth_down_mbps: number; bandwidth_up_mbps: number; quota_gb: number | null; is_active: boolean }[];
+  plans: Plan[];
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -17,6 +17,7 @@ function PlanTable({
         <thead className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
           <tr>
             <th className="px-4 py-3 font-medium">Name</th>
+            <th className="px-4 py-3 font-medium">Subscribers</th>
             <th className="px-4 py-3 font-medium">Price</th>
             <th className="px-4 py-3 font-medium">Duration</th>
             <th className="px-4 py-3 font-medium">Down / Up</th>
@@ -32,6 +33,7 @@ function PlanTable({
                 <div className="font-medium text-zinc-900 dark:text-zinc-50">{plan.name}</div>
                 <div className="text-xs text-zinc-500 dark:text-zinc-400">{plan.radius_group}</div>
               </td>
+              <td className="px-4 py-3 tabular-nums">{plan.subscriber_count}</td>
               <td className="px-4 py-3 tabular-nums">{plan.price}</td>
               <td className="px-4 py-3">{plan.duration_days} days</td>
               <td className="px-4 py-3 tabular-nums">

@@ -10,6 +10,7 @@ from app.core.security import hash_password
 from app.models.audit import AuditLog
 from app.models.radius import RadGroupCheck, RadGroupReply
 from app.models.rbac import Admin
+from app.models.subscriber import Subscriber
 from app.services import plans as plans_service
 
 RAD_DOWN = plans_service.RAD_DOWN_ATTR
@@ -153,3 +154,27 @@ async def test_update_writes_audit_entry(session):
     update = next(e for e in rows if e.action == "update")
     assert update.resource == "plans"
     assert update.metadata_ == {"name": "Starter", "fields": ["price", "is_active"]}
+
+
+async def test_get_subscriber_counts_groups_by_plan(session):
+    actor = await _seed_actor(session)
+    p1 = await _create_plan(session, actor.id, name="Starter", radius_group="rad_starter")
+    p2 = await _create_plan(session, actor.id, name="Pro", radius_group="rad_pro")
+    session.add_all(
+        [
+            Subscriber(username="a1", full_name="A", status="active", plan_id=p1.id),
+            Subscriber(username="a2", full_name="B", status="active", plan_id=p1.id),
+            Subscriber(username="s1", full_name="C", status="suspended", plan_id=p2.id),
+            Subscriber(username="u1", full_name="D", status="active"),  # unassigned
+        ]
+    )
+    await session.commit()
+
+    counts = await plans_service.get_subscriber_counts(session)
+    assert counts == {p1.id: 2, p2.id: 1}
+    # plans with no subscribers are simply absent — callers default to 0
+    assert counts.get(999, 0) == 0
+
+
+async def test_get_subscriber_counts_empty_db(session):
+    assert await plans_service.get_subscriber_counts(session) == {}

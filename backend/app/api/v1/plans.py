@@ -36,10 +36,21 @@ async def list_plans(
     page_size: int = Query(20, ge=1, le=100),
     q: str | None = Query(None, max_length=64),
 ) -> Page[PlanOut]:
-    """GET /api/v1/plans — requires plans:read."""
+    """GET /api/v1/plans — requires plans:read.
+
+    Each item carries subscriber_count (assigned subscribers per plan) from
+    a grouped count — one extra query, so the dashboard table can show how
+    many subscribers each plan serves.
+    """
     items, total = await plans_service.list_plans(session, page, page_size, q)
+    counts = await plans_service.get_subscriber_counts(session)
+    items_out = []
+    for p in items:
+        out = PlanOut.model_validate(p)
+        out.subscriber_count = counts.get(p.id, 0)
+        items_out.append(out)
     return Page(
-        items=[PlanOut.model_validate(p) for p in items],
+        items=items_out,
         total=total,
         page=page,
         page_size=page_size,
@@ -71,7 +82,10 @@ async def get_plan(
 ) -> PlanOut:
     """GET /api/v1/plans/{id} — requires plans:read."""
     plan = await plans_service.get_plan_or_404(session, plan_id)
-    return PlanOut.model_validate(plan)
+    counts = await plans_service.get_subscriber_counts(session)
+    out = PlanOut.model_validate(plan)
+    out.subscriber_count = counts.get(plan.id, 0)
+    return out
 
 
 @router.patch("/{plan_id}", response_model=PlanOut)

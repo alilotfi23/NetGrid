@@ -22,6 +22,8 @@ class PlanOut(BaseModel):
     description: str | None = None
     is_active: bool
     created_at: datetime
+    # populated by the API from a grouped subscriber count (not a Plan column)
+    subscriber_count: int = 0
 
 
 class PlanCreate(BaseModel):

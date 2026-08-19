@@ -25,6 +25,7 @@ const PLAN: Plan = {
   description: null,
   is_active: true,
   created_at: "2026-08-19T00:00:00",
+  subscriber_count: 2,
 };
 
 function mockFetchOnce(response: Partial<Response>): void {
