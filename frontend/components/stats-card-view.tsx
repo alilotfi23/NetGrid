@@ -1,4 +1,5 @@
 import type { SubscriberStats } from "@/lib/api";
+import { PlanBreakdownChart } from "./plan-breakdown-chart";
 
 const STATUS_TILES = [
   { key: "active", label: "Active", className: "text-emerald-600 dark:text-emerald-400" },
@@ -30,8 +31,6 @@ export function StatsCardView({
       </section>
     );
   }
-
-  const maxPlanCount = Math.max(1, ...stats.by_plan.map((p) => p.count));
 
   return (
     <section
@@ -65,24 +64,7 @@ export function StatsCardView({
       {stats.by_plan.length === 0 ? (
         <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">No subscribers yet.</p>
       ) : (
-        <ul className="mt-2 space-y-2">
-          {stats.by_plan.map((entry) => (
-            <li key={entry.plan_id ?? "unassigned"} className="flex items-center gap-3">
-              <span className="w-32 truncate text-sm text-zinc-700 dark:text-zinc-300">
-                {entry.plan_name ?? "No plan"}
-              </span>
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
-                <div
-                  className="h-full rounded-full bg-indigo-500"
-                  style={{ width: `${(entry.count / maxPlanCount) * 100}%` }}
-                />
-              </div>
-              <span className="w-8 text-right text-sm font-medium tabular-nums text-zinc-900 dark:text-zinc-50">
-                {entry.count}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <PlanBreakdownChart data={stats.by_plan} />
       )}
     </section>
   );

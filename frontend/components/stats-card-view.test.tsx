@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { SubscriberStats } from "@/lib/api";
@@ -17,20 +17,23 @@ const STATS: SubscriberStats = {
 
 describe("StatsCardView", () => {
   it("renders the status counts", () => {
-    render(<StatsCardView stats={STATS} />);
-
-    expect(screen.getByText("Active")).toBeTruthy();
-    expect(screen.getByText("Suspended")).toBeTruthy();
-    expect(screen.getByText("Expired")).toBeTruthy();
+    const { container } = render(<StatsCardView stats={STATS} />);
+    // scope to the status tiles so the chart's axis labels can't interfere
+    const dl = container.querySelector("dl");
+    expect(dl).toBeTruthy();
+    expect(within(dl as HTMLElement).getByText("Active")).toBeTruthy();
+    expect(within(dl as HTMLElement).getByText("Suspended")).toBeTruthy();
+    expect(within(dl as HTMLElement).getByText("Expired")).toBeTruthy();
+    expect(within(dl as HTMLElement).getByText("4")).toBeTruthy();
+    expect(within(dl as HTMLElement).getAllByText("2")).toHaveLength(1);
+    expect(within(dl as HTMLElement).getAllByText("1")).toHaveLength(2);
     expect(screen.getByText("4 total")).toBeTruthy();
-    // "2": Active tile + Starter row + unassigned row; "1": both remaining tiles
-    expect(screen.getAllByText("2")).toHaveLength(3);
-    expect(screen.getAllByText("1")).toHaveLength(2);
   });
 
-  it("renders the per-plan breakdown with unassigned labeled No plan", () => {
+  it("renders the per-plan breakdown as a chart", () => {
     render(<StatsCardView stats={STATS} />);
 
+    expect(screen.getByRole("img", { name: "Subscribers per plan" })).toBeTruthy();
     expect(screen.getByText("Starter")).toBeTruthy();
     expect(screen.getByText("No plan")).toBeTruthy();
   });
