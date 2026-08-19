@@ -287,3 +287,69 @@ export async function loadSubscriberSessions(id: number): Promise<SubscriberSess
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
+
+export type NasDevice = {
+  id: number;
+  name: string;
+  ip_address: string;
+  shortname: string;
+  nas_type: string;
+  ports: number | null;
+  server: string | null;
+  community: string | null;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export async function getNasDevices(): Promise<NasDevice[]> {
+  const res = await apiFetch("/api/v1/nas-devices?page_size=100");
+  const page = (await res.json()) as { items: NasDevice[] };
+  return page.items;
+}
+
+export type NasDevicesResult = { ok: true; devices: NasDevice[] } | { ok: false; error: string };
+
+export async function loadNasDevices(): Promise<NasDevicesResult> {
+  try {
+    return { ok: true, devices: await getNasDevices() };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+export async function getNasDevice(id: number): Promise<NasDevice> {
+  const res = await apiFetch(`/api/v1/nas-devices/${id}`);
+  return (await res.json()) as NasDevice;
+}
+
+export type NasDeviceResult = { ok: true; device: NasDevice } | { ok: false; error: string };
+
+export async function loadNasDevice(id: number): Promise<NasDeviceResult> {
+  try {
+    return { ok: true, device: await getNasDevice(id) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+/** Mutations — called from route handlers (never from the browser directly). */
+export async function createNasDevice(payload: unknown): Promise<NasDevice> {
+  const res = await apiFetch("/api/v1/nas-devices", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return (await res.json()) as NasDevice;
+}
+
+export async function updateNasDevice(id: number, payload: unknown): Promise<NasDevice> {
+  const res = await apiFetch(`/api/v1/nas-devices/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+  return (await res.json()) as NasDevice;
+}
+
+export async function deleteNasDevice(id: number): Promise<void> {
+  await apiFetch(`/api/v1/nas-devices/${id}`, { method: "DELETE" });
+}

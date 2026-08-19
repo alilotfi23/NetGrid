@@ -1,15 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createNasDevice,
   createPlan,
   createSubscriber,
+  deleteNasDevice,
+  getNasDevices,
   getPlans,
   getSubscriberStats,
   getSubscribers,
+  loadNasDevice,
+  loadNasDevices,
   loadSubscriberHistory,
   loadSubscribers,
   loadSubscriberSessions,
   loadSubscriberStats,
+  updateNasDevice,
   updateSubscriber,
 } from "./api";
 
@@ -271,5 +277,98 @@ describe("subscriber helpers", () => {
     expect(url).toBe("http://localhost:8000/api/v1/subscribers/7");
     expect(init?.method).toBe("PATCH");
     expect(JSON.parse(String(init?.body))).toEqual({ status: "suspended" });
+  });
+});
+
+describe("NAS device helpers", () => {
+  const DEVICE = {
+    id: 3,
+    name: "edge-r1",
+    ip_address: "192.168.0.10",
+    shortname: "edge1",
+    nas_type: "other",
+    ports: 1812,
+    server: null,
+    community: null,
+    description: "core router",
+    is_active: true,
+    created_at: "2026-08-19T00:00:00",
+  };
+
+  it("getNasDevices returns the paginated items", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({ items: [DEVICE], total: 1, page: 1, page_size: 100 }),
+    });
+
+    await expect(getNasDevices()).resolves.toEqual([DEVICE]);
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/nas-devices?page_size=100",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("loadNasDevices returns an error result instead of throwing", async () => {
+    mockFetch({ ok: false, status: 403 });
+    expect(await loadNasDevices()).toEqual({
+      ok: false,
+      error: "request failed: HTTP 403",
+    });
+  });
+
+  it("loadNasDevice fetches a single device by id", async () => {
+    mockFetch({ ok: true, json: async () => DEVICE });
+
+    expect(await loadNasDevice(3)).toEqual({ ok: true, device: DEVICE });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/nas-devices/3",
+      expect.anything(),
+    );
+  });
+
+  it("createNasDevice POSTs the payload with the secret and returns the device", async () => {
+    mockFetch({ ok: true, status: 201, json: async () => DEVICE });
+
+    const created = await createNasDevice({
+      name: "edge-r1",
+      ip_address: "192.168.0.10",
+      shortname: "edge1",
+      secret: "s3cret",
+      is_active: true,
+    });
+    expect(created).toEqual(DEVICE);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/nas-devices");
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: "edge-r1",
+      ip_address: "192.168.0.10",
+      shortname: "edge1",
+      secret: "s3cret",
+      is_active: true,
+    });
+  });
+
+  it("updateNasDevice PATCHes to the device endpoint", async () => {
+    mockFetch({ ok: true, json: async () => ({ ...DEVICE, is_active: false }) });
+
+    const updated = await updateNasDevice(3, { is_active: false });
+    expect(updated.is_active).toBe(false);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/nas-devices/3");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({ is_active: false });
+  });
+
+  it("deleteNasDevice DELETEs without a body", async () => {
+    mockFetch({ ok: true, status: 204, json: async () => ({}) });
+
+    await deleteNasDevice(3);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/nas-devices/3");
+    expect(init?.method).toBe("DELETE");
   });
 });
