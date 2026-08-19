@@ -1,0 +1,13 @@
+# Minimal RADIUS dictionary for NetGrid's Disconnect-Request sender.
+#
+# pyrad does not ship a dictionary and FreeRADIUS's full dictionary is not
+# present in the backend image, so we vendor only the attributes NetGrid
+# puts on the wire. Numbers match the IANA-assigned standard attribute codes
+# (the same ones FreeRADIUS's dictionary defines).
+#
+# Format is the standard FreeRADIUS dictionary syntax:
+#   ATTRIBUTE <name> <number> <type>
+ATTRIBUTE User-Name 1 string
+ATTRIBUTE Framed-IP-Address 8 ipaddr
+ATTRIBUTE Acct-Session-Id 44 string
+ATTRIBUTE Message-Authenticator 80 octets

@@ -5,6 +5,7 @@ import {
   createPlan,
   createSubscriber,
   deleteNasDevice,
+  disconnectSession,
   getNasDevices,
   getPlans,
   getSessions,
@@ -467,6 +468,15 @@ describe("NAS device helpers", () => {
       ok: false,
       error: "request failed: HTTP 403",
     });
+  });
+
+  it("disconnectSession POSTs to the session disconnect endpoint", async () => {
+    mockFetch({ ok: true, json: async () => ({ status: "disconnected" }) });
+
+    await disconnectSession(7);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe("http://localhost:8000/api/v1/sessions/7/disconnect");
+    expect(init?.method).toBe("POST");
   });
 
   it("deleteNasDevice DELETEs without a body", async () => {

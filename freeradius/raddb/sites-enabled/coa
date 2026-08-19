@@ -1,0 +1,30 @@
+#  RFC 5176 CoA / Disconnect listener (Phase 9).
+#
+#  NetGrid's backend sends Disconnect-Requests *directly* to the NAS via
+#  pyrad (CLAUDE.md: a client-library call, not a FreeRADIUS proxy), so the
+#  production role of this virtual server is limited: in the dev stack the
+#  FreeRADIUS container doubles as the test NAS, and this listener is what
+#  answers on UDP 3799. The request is authorized like any other packet —
+#  the source IP is matched against clients.conf / the nas table, so the
+#  signature must use the matched client's secret.
+#
+#  A single "type = coa" listener handles both CoA-Request and
+#  Disconnect-Request packets; both are processed through the recv-coa
+#  section of the "coa" virtual server. With no failing module, the server
+#  replies Disconnect-ACK / CoA-ACK per RFC 5176.
+#
+listen {
+	type = coa
+	ipaddr = *
+	port = 3799
+	virtual_server = coa
+}
+
+server coa {
+	#  No processing — an empty recv-coa/send-coa accepts the request
+	#  (the NAS side performs the actual disconnection).
+	recv-coa {
+	}
+	send-coa {
+	}
+}

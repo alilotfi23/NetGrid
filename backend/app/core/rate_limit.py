@@ -42,8 +42,10 @@ LIMITS = {
     # Phase 7 NAS device endpoints: same tiers.
     "nas_read": "60/minute",
     "nas_write": "20/minute",
-    # Phase 9 live-session endpoints (read side): reads loose.
+    # Phase 9 live-session endpoints: reads loose, disconnects moderate
+    # (a disconnect is a write-ish action against a live NAS).
     "sessions_read": "60/minute",
+    "sessions_disconnect": "10/minute",
 }
 
 

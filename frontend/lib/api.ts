@@ -288,6 +288,11 @@ export async function loadSessions(): Promise<SessionsResult> {
   }
 }
 
+/** Send an RFC 5176 Disconnect-Request to the session's NAS via the API. */
+export async function disconnectSession(id: number): Promise<void> {
+  await apiFetch(`/api/v1/sessions/${id}/disconnect`, { method: "POST" });
+}
+
 /** Mutations — called from route handlers (never from the browser directly). */
 export async function createSubscriber(payload: unknown): Promise<Subscriber> {
   const res = await apiFetch("/api/v1/subscribers", {

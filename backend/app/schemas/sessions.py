@@ -1,9 +1,21 @@
-"""Pydantic schemas for live sessions (Phase 9, read side)."""
+"""Pydantic schemas for live sessions (Phase 9)."""
+
+from typing import Literal
 
 from pydantic import BaseModel
 
 from app.core.pagination import Page
 from app.schemas.subscribers import LiveSessionOut
+
+
+class DisconnectResult(BaseModel):
+    """Outcome of a Disconnect-Request sent to the session's NAS.
+
+    Only a Disconnect-ACK returns here — NAK/timeout surface as errors
+    (409 CONFLICT / 502 BAD_GATEWAY).
+    """
+
+    status: Literal["disconnected"]
 
 
 class SessionNasCount(BaseModel):

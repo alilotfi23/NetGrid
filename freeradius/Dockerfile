@@ -9,6 +9,7 @@ RUN apk add --no-cache freeradius freeradius-postgresql freeradius-utils \
 COPY raddb/clients.conf /etc/raddb/clients.conf
 COPY raddb/mods-enabled/sql /etc/raddb/mods-enabled/sql
 COPY raddb/sites-enabled/default /etc/raddb/sites-enabled/default
+COPY raddb/sites-enabled/coa /etc/raddb/sites-enabled/coa
 
 EXPOSE 1812/udp 1813/udp
 

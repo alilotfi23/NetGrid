@@ -1,7 +1,7 @@
-"""Live-session endpoints (Phase 9, read side).
+"""Live-session endpoints (Phase 9).
 
-Permissions: sessions:read for the list. The disconnect/CoA action
-(sessions:disconnect) arrives with the rest of Phase 9.
+Permissions: sessions:read for the list, sessions:disconnect for the
+RFC 5176 Disconnect-Request action (sent directly to the NAS via pyrad).
 """
 
 from typing import Annotated
@@ -13,8 +13,9 @@ from app.api.deps import require_permission
 from app.core.db import get_session
 from app.core.rate_limit import LIMITS, limiter
 from app.models.rbac import Admin
-from app.schemas.sessions import SessionList, SessionNasCount, SessionStats
+from app.schemas.sessions import DisconnectResult, SessionList, SessionNasCount, SessionStats
 from app.schemas.subscribers import LiveSessionOut
+from app.services import disconnect as disconnect_service
 from app.services import sessions as sessions_service
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
@@ -50,3 +51,25 @@ async def list_sessions(
             by_nas=[SessionNasCount(nasipaddress=nas, count=count) for nas, count in by_nas],
         ),
     )
+
+
+@router.post("/{session_id}/disconnect", response_model=DisconnectResult)
+@limiter.limit(LIMITS["sessions_disconnect"])
+async def disconnect_live_session(
+    request: Request,
+    response: Response,
+    session_id: int,
+    session: SessionDep,
+    actor: Annotated[Admin, Depends(require_permission("sessions:disconnect"))],
+) -> DisconnectResult:
+    """POST /api/v1/sessions/{id}/disconnect — requires sessions:disconnect.
+
+    Sends an RFC 5176 Disconnect-Request (pyrad) straight to the session's
+    NAS on port 3799, signed with the NAS device's shared secret. The NAS
+    replies Disconnect-ACK/NAK; the radacct row closes when the NAS later
+    sends its Accounting-Stop — FastAPI never writes radacct.
+    """
+    status = await disconnect_service.disconnect_session(
+        session, session_id=session_id, actor_id=actor.id
+    )
+    return DisconnectResult(status=status)

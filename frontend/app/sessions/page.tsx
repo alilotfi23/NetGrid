@@ -1,4 +1,5 @@
 import { Nav } from "@/components/nav";
+import { SessionDisconnectButton } from "@/components/session-disconnect-button";
 import { formatBytes, formatDate, formatDuration } from "@/lib/format";
 import { type LiveSession, loadSessions } from "@/lib/api";
 
@@ -18,6 +19,7 @@ function SessionTable({ sessions }: { sessions: LiveSession[] }) {
             <th className="px-4 py-3 font-medium">Duration</th>
             <th className="px-4 py-3 font-medium">Download</th>
             <th className="px-4 py-3 font-medium">Upload</th>
+            <th className="px-4 py-3 font-medium">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
@@ -32,6 +34,9 @@ function SessionTable({ sessions }: { sessions: LiveSession[] }) {
               <td className="px-4 py-3 tabular-nums">{formatDuration(s.acctsessiontime)}</td>
               <td className="px-4 py-3 tabular-nums">{formatBytes(s.acctinputoctets)}</td>
               <td className="px-4 py-3 tabular-nums">{formatBytes(s.acctoutputoctets)}</td>
+              <td className="px-4 py-3">
+                <SessionDisconnectButton sessionId={s.id} username={s.username ?? ""} />
+              </td>
             </tr>
           ))}
         </tbody>
@@ -53,7 +58,9 @@ export default async function SessionsPage() {
           </h1>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
             Open radacct sessions across all NAS devices, newest first. A
-            session disappears once the NAS sends its Accounting-Stop.
+            session disappears once the NAS sends its Accounting-Stop;
+            Disconnect sends an RFC 5176 Disconnect-Request to the NAS to
+            terminate a session immediately.
           </p>
         </div>
 

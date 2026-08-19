@@ -101,6 +101,7 @@ class RadAcct(Base):
     __tablename__ = "radacct"
 
     id: Mapped[int] = mapped_column("radacctid", BigInteger, primary_key=True)
+    acctsessionid: Mapped[str | None] = mapped_column(Text)
     username: Mapped[str | None] = mapped_column(Text)
     nasipaddress: Mapped[str | None] = mapped_column(INET)
     acctstarttime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

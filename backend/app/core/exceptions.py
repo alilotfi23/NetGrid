@@ -39,3 +39,11 @@ class ForbiddenError(AppError):
     code = "FORBIDDEN"
     status_code = 403
     message = "Insufficient permissions"
+
+
+class GatewayError(AppError):
+    """An upstream system (e.g. a NAS) failed to fulfil the request."""
+
+    code = "BAD_GATEWAY"
+    status_code = 502
+    message = "Upstream service error"
