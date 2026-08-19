@@ -261,8 +261,8 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Tiered limits applied across existing endpoints (auth strict, writes moderate, reads loose)
   - Full unit + integration coverage (limiter logic, 429 at threshold, window reset, per-IP vs per-user isolation)
 
-- [ ] **Phase 9 — Sessions (radacct) & CoA**
-  - Resolve the CoA/disconnect mechanism (open item in Prioritized Recommendations) before writing this phase's code
+- [x] **Phase 9 — Sessions (radacct) & CoA**
+  - Resolve the CoA/disconnect mechanism (open item in Prioritized Recommendations) before writing this phase's code — resolved: direct pyrad RFC 5176 Disconnect-Request from FastAPI to the NAS (see direct-coupling decision)
   - Live session read API (RBAC-gated: `sessions:read`)
   - Disconnect endpoint (RBAC-gated: `sessions:disconnect`) triggering RADIUS CoA
   - Full unit + integration coverage (data transform/formatting, live session read, disconnect triggers correctly)
