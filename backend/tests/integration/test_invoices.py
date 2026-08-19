@@ -287,6 +287,97 @@ async def test_audit_entries_written(client, session):
     assert generate.metadata_["created"] == 1
 
 
+async def test_payments_report_via_api(client, session):
+    """GET /invoices/report returns revenue grouped by month + method."""
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    plan = await _create_plan(client, token)
+    await _create_subscriber(client, token, "bob", plan["id"])
+    await _generate(client, token)
+    invoice_id = (await client.get("/api/v1/invoices", headers=_auth(token))).json()["items"][0][
+        "id"
+    ]
+
+    # two payments this month: same method twice, one different method
+    await client.post(
+        f"/api/v1/invoices/{invoice_id}/payments",
+        json={"amount": "6.00", "method": "cash"},
+        headers=_auth(token),
+    )
+    await client.post(
+        f"/api/v1/invoices/{invoice_id}/payments",
+        json={"amount": "4.00", "method": "cash"},
+        headers=_auth(token),
+    )
+
+    resp = await client.get("/api/v1/invoices/report", headers=_auth(token))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total_revenue"] == "10.00"
+    assert len(body["items"]) == 1  # same month, same method -> one bucket
+    assert body["items"][0]["method"] == "cash"
+    assert body["items"][0]["revenue"] == "10.00"
+    assert body["items"][0]["count"] == 2
+
+
+async def test_payments_report_year_filter_via_api(client, session):
+    """The year query param narrows the report to one calendar year."""
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    plan = await _create_plan(client, token)
+    await _create_subscriber(client, token, "bob", plan["id"])
+    await _generate(client, token)
+    invoice_id = (await client.get("/api/v1/invoices", headers=_auth(token))).json()["items"][0][
+        "id"
+    ]
+    await client.post(
+        f"/api/v1/invoices/{invoice_id}/payments",
+        json={"amount": "10.00", "method": "cash"},
+        headers=_auth(token),
+    )
+
+    # this year's payment shows up; a year filter on a different year is empty
+    from datetime import date
+
+    current_year = date.today().year
+    resp = await client.get(f"/api/v1/invoices/report?year={current_year}", headers=_auth(token))
+    assert resp.status_code == 200
+    assert resp.json()["total_revenue"] == "10.00"
+
+    resp = await client.get("/api/v1/invoices/report?year=1999", headers=_auth(token))
+    assert resp.status_code == 422  # year out of the 2000-2100 range
+
+
+async def test_payments_report_auditor_can_read(client, session):
+    """The report is a read: auditor (*:read) can fetch it, writes stay denied."""
+    await _seed_admin(session, "boss", ["*:*"])
+    super_token = await _login(client)
+    plan = await _create_plan(client, super_token)
+    await _create_subscriber(client, super_token, "bob", plan["id"])
+    await _generate(client, super_token)
+    invoice_id = (await client.get("/api/v1/invoices", headers=_auth(super_token))).json()["items"][
+        0
+    ]["id"]
+    await client.post(
+        f"/api/v1/invoices/{invoice_id}/payments",
+        json={"amount": "10.00", "method": "cash"},
+        headers=_auth(super_token),
+    )
+
+    await _seed_admin(session, "audit", ["*:read"])
+    token = await _login(client, "audit")
+    resp = await client.get("/api/v1/invoices/report", headers=_auth(token))
+    assert resp.status_code == 200
+    assert resp.json()["total_revenue"] == "10.00"
+
+
+async def test_payments_report_requires_read_permission(client, session):
+    await _seed_admin(session, "boss", ["subscribers:read"])
+    token = await _login(client)
+    resp = await client.get("/api/v1/invoices/report", headers=_auth(token))
+    assert resp.status_code == 403
+
+
 async def test_status_filter_validated(client, session):
     await _seed_admin(session, "boss", ["*:*"])
     token = await _login(client)

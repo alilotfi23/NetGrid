@@ -1,6 +1,6 @@
 """Unit tests for the billing service (services/billing) + invoice job (Phase 10)."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -405,6 +405,91 @@ async def test_get_subscriber_usernames(session):
     names = await billing_service.get_subscriber_usernames(session, [bob.id])
     assert names == {bob.id: "bob"}
     assert await billing_service.get_subscriber_usernames(session, []) == {}
+
+
+# ---------------------------------------------------------------------------
+# Payments report
+# ---------------------------------------------------------------------------
+
+
+async def _seed_payment(
+    session, invoice_id: int, amount: str, method: str, *, created_at: datetime, status="completed"
+) -> Payment:
+    payment = Payment(
+        invoice_id=invoice_id,
+        amount=Decimal(amount),
+        method=method,
+        status=status,
+        created_at=created_at,
+    )
+    session.add(payment)
+    await session.commit()
+    return payment
+
+
+async def test_payments_report_groups_by_month_and_method(session):
+    inv = await _issued_invoice(session, amount="100.00")
+    await _seed_payment(session, inv.id, "50.00", "cash", created_at=datetime(2026, 3, 5))
+    await _seed_payment(session, inv.id, "25.00", "cash", created_at=datetime(2026, 3, 20))
+    await _seed_payment(session, inv.id, "25.00", "wallet", created_at=datetime(2026, 3, 21))
+    await _seed_payment(session, inv.id, "30.00", "cash", created_at=datetime(2026, 2, 10))
+
+    report = await billing_service.get_payments_report(session)
+    # newest month first, then method asc within a month
+    assert report["items"][0]["month"] == "2026-03"
+    assert report["items"][0]["method"] == "cash"
+    assert report["items"][0]["revenue"] == Decimal("75.00")
+    assert report["items"][0]["count"] == 2
+    assert report["items"][1] == {
+        "month": "2026-03",
+        "method": "wallet",
+        "revenue": Decimal("25.00"),
+        "count": 1,
+    }
+    assert report["items"][2] == {
+        "month": "2026-02",
+        "method": "cash",
+        "revenue": Decimal("30.00"),
+        "count": 1,
+    }
+    assert report["total_revenue"] == Decimal("130.00")
+
+
+async def test_payments_report_excludes_non_completed(session):
+    inv = await _issued_invoice(session, amount="100.00")
+    await _seed_payment(session, inv.id, "50.00", "cash", created_at=datetime(2026, 3, 5))
+    await _seed_payment(
+        session, inv.id, "20.00", "cash", created_at=datetime(2026, 3, 6), status="pending"
+    )
+    await _seed_payment(
+        session, inv.id, "10.00", "cash", created_at=datetime(2026, 3, 7), status="failed"
+    )
+
+    report = await billing_service.get_payments_report(session)
+    assert len(report["items"]) == 1
+    assert report["items"][0]["revenue"] == Decimal("50.00")
+    assert report["total_revenue"] == Decimal("50.00")
+
+
+async def test_payments_report_year_filter(session):
+    inv = await _issued_invoice(session, amount="100.00")
+    await _seed_payment(session, inv.id, "40.00", "cash", created_at=datetime(2026, 3, 5))
+    await _seed_payment(session, inv.id, "60.00", "cash", created_at=datetime(2025, 12, 31))
+
+    report_2026 = await billing_service.get_payments_report(session, year=2026)
+    assert len(report_2026["items"]) == 1
+    assert report_2026["items"][0]["month"] == "2026-03"
+    assert report_2026["total_revenue"] == Decimal("40.00")
+
+    report_2025 = await billing_service.get_payments_report(session, year=2025)
+    assert len(report_2025["items"]) == 1
+    assert report_2025["items"][0]["month"] == "2025-12"
+    assert report_2025["total_revenue"] == Decimal("60.00")
+
+
+async def test_payments_report_empty(session):
+    report = await billing_service.get_payments_report(session)
+    assert report == {"items": [], "total_revenue": Decimal("0.00")}
 
 
 # ---------------------------------------------------------------------------

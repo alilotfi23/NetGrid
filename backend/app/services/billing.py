@@ -309,3 +309,52 @@ async def record_payment(
         },
     )
     return payment
+
+
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
+
+
+async def get_payments_report(
+    session: AsyncSession,
+    *,
+    year: int | None = None,
+) -> dict[str, object]:
+    """Revenue grouped by (month, method) for completed payments.
+
+    Returns ``{"items": [{month, method, revenue, count}, ...],
+    "total_revenue": Decimal}`` with months newest-first. ``year`` narrows
+    to one calendar year (e.g. 2026). Only ``completed`` payments count;
+    pending/failed are excluded.
+    """
+    month_expr = func.to_char(Payment.created_at, "YYYY-MM").label("month")
+    stmt = (
+        select(
+            month_expr,
+            Payment.method,
+            func.coalesce(func.sum(Payment.amount), 0),
+            func.count(),
+        )
+        .where(Payment.status == PAYMENT_COMPLETED)
+        .group_by(month_expr, Payment.method)
+        .order_by(month_expr.desc(), Payment.method)
+    )
+    if year is not None:
+        stmt = stmt.where(func.extract("year", Payment.created_at) == year)
+
+    rows = (await session.execute(stmt)).all()
+    items: list[dict[str, object]] = []
+    total = Decimal("0.00")
+    for month, method, revenue, count in rows:
+        revenue_dec = Decimal(revenue).quantize(CENT)
+        total += revenue_dec
+        items.append(
+            {
+                "month": str(month),
+                "method": method,
+                "revenue": revenue_dec,
+                "count": int(count),
+            }
+        )
+    return {"items": items, "total_revenue": total.quantize(CENT)}

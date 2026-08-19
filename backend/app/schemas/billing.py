@@ -81,3 +81,19 @@ class PaymentResult(BaseModel):
 
     payment: PaymentOut
     invoice: InvoiceOut
+
+
+class PaymentReportRow(BaseModel):
+    """One (month, method) bucket of the revenue report."""
+
+    month: str  # YYYY-MM
+    method: str
+    revenue: Decimal
+    count: int
+
+
+class PaymentReport(BaseModel):
+    """Revenue grouped by month and payment method (completed payments only)."""
+
+    items: list[PaymentReportRow]
+    total_revenue: Decimal

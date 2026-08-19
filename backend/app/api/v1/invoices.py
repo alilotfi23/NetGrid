@@ -22,6 +22,7 @@ from app.schemas.billing import (
     InvoiceStats,
     PaymentCreate,
     PaymentOut,
+    PaymentReport,
     PaymentResult,
 )
 from app.services import billing as billing_service
@@ -70,8 +71,25 @@ async def list_invoices(
     )
 
 
-# Route order matters: this static path must stay ahead of `/{invoice_id}`
-# so "generate" is never parsed as an int id.
+# Route order matters: these static paths must stay ahead of `/{invoice_id}`
+# so "generate"/"report" are never parsed as int ids.
+@router.get("/report", response_model=PaymentReport)
+@limiter.limit(LIMITS["invoice_read"])
+async def payments_report(
+    request: Request,
+    response: Response,
+    session: SessionDep,
+    _: Annotated[Admin, Depends(require_permission("invoices:read"))],
+    year: int | None = Query(None, ge=2000, le=2100),
+) -> PaymentReport:
+    """GET /api/v1/invoices/report — requires invoices:read.
+
+    Revenue grouped by (month, method) for completed payments, newest month
+    first, with the grand total. `year` narrows to one calendar year.
+    """
+    return PaymentReport(**await billing_service.get_payments_report(session, year=year))
+
+
 @router.post("/generate", response_model=InvoiceGenerateResult)
 @limiter.limit(LIMITS["invoice_write"])
 async def generate_invoices(
