@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from app.core.security import hash_password
-from app.jobs.invoice_generation import run_invoice_generation
+from app.jobs.invoice_generation import run_invoice_generation, run_overdue_sweep
 from app.models.audit import AuditLog
 from app.models.billing import Invoice, Payment
 from app.models.plan import Plan
@@ -413,10 +413,10 @@ async def test_get_subscriber_usernames(session):
 
 
 async def test_run_invoice_generation_produces_expected_db_state(session):
-    """The job body itself: generate + mark overdue in one pass."""
+    """The monthly job body: creates this month's invoices only."""
     plan = await _seed_plan(session)
     await _seed_subscriber(session, "bob", plan_id=plan.id)
-    # an old invoice from a past period, to be flipped by the overdue pass
+    # an old invoice from a past period must NOT be touched by generation
     await billing_service.generate_invoices(
         session, period_start=date(2020, 1, 1), period_end=date(2020, 1, 31)
     )
@@ -426,5 +426,38 @@ async def test_run_invoice_generation_produces_expected_db_state(session):
     invoices = await _invoices(session)
     assert len(invoices) == 2
     statuses = {inv.status for inv in invoices}
-    assert "overdue" in statuses  # the 2020 invoice flipped
-    assert "issued" in statuses  # this month's invoice created
+    # the old invoice stays issued — only the daily sweep flips it
+    assert statuses == {"issued"}
+
+
+async def test_run_overdue_sweep_flips_past_due_invoices(session):
+    """The daily job body: marks only issued invoices past due as overdue."""
+    plan = await _seed_plan(session)
+    await _seed_subscriber(session, "bob", plan_id=plan.id)
+    await _seed_subscriber(session, "alice", plan_id=plan.id)
+    # one old invoice (past due) and one paid invoice from the same era
+    await billing_service.generate_invoices(
+        session, period_start=date(2020, 1, 1), period_end=date(2020, 1, 31)
+    )
+    invoices = await _invoices(session)
+    assert len(invoices) == 2
+    invoices[0].status = "paid"
+    await session.commit()
+
+    marked = await run_overdue_sweep(session)
+    assert marked == 1
+    statuses = {inv.status for inv in await _invoices(session)}
+    assert statuses == {"paid", "overdue"}
+
+
+async def test_build_scheduler_registers_both_jobs():
+    """The scheduler carries both billing jobs with distinct ids."""
+    from app.jobs.invoice_generation import build_scheduler
+
+    scheduler = build_scheduler()
+    jobs = {job.id: str(job.trigger) for job in scheduler.get_jobs()}
+    assert "monthly-invoice-generation" in jobs
+    assert "daily-overdue-sweep" in jobs
+    # monthly runs on the 1st; the daily sweep runs every day
+    assert "day='1'" in jobs["monthly-invoice-generation"]
+    assert "day='1'" not in jobs["daily-overdue-sweep"]
