@@ -50,6 +50,8 @@ LIMITS = {
     # (a disconnect is a write-ish action against a live NAS).
     "sessions_read": "60/minute",
     "sessions_disconnect": "10/minute",
+    # Phase 12 audit log viewer: read-only.
+    "audit_read": "60/minute",
 }
 
 

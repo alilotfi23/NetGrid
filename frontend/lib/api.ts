@@ -724,3 +724,77 @@ export async function setRolePermissions(id: number, codes: string[]): Promise<R
 export async function deleteRole(id: number): Promise<void> {
   await apiFetch(`/api/v1/roles/${id}`, { method: "DELETE" });
 }
+
+export type AuditLogEntry = {
+  id: number;
+  admin_id: number | null;
+  admin_username: string | null;
+  action: string;
+  resource: string;
+  resource_id: string | null;
+  metadata_: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type AuditActorOption = {
+  id: number;
+  username: string;
+};
+
+export type AuditLogFilters = {
+  actions: string[];
+  resources: string[];
+  admins: AuditActorOption[];
+};
+
+export type AuditLogListFilters = {
+  adminId?: number;
+  action?: string;
+  resource?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AuditLogPage = {
+  entries: AuditLogEntry[];
+  filters: AuditLogFilters;
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function getAuditLogs(filters?: AuditLogListFilters): Promise<AuditLogPage> {
+  const params = new URLSearchParams({ page_size: String(filters?.pageSize ?? 20) });
+  if (filters?.page != null) params.set("page", String(filters.page));
+  if (filters?.adminId != null) params.set("admin_id", String(filters.adminId));
+  if (filters?.action) params.set("action", filters.action);
+  if (filters?.resource) params.set("resource", filters.resource);
+  const res = await apiFetch(`/api/v1/audit-logs?${params.toString()}`);
+  const body = (await res.json()) as {
+    items: AuditLogEntry[];
+    filters: AuditLogFilters;
+    total: number;
+    page: number;
+    page_size: number;
+  };
+  return {
+    entries: body.items,
+    filters: body.filters,
+    total: body.total,
+    page: body.page,
+    pageSize: body.page_size,
+  };
+}
+
+export type AuditLogsResult =
+  | ({ ok: true } & AuditLogPage)
+  | { ok: false; error: string };
+
+export async function loadAuditLogs(filters?: AuditLogListFilters): Promise<AuditLogsResult> {
+  try {
+    const { entries, filters: options, total, page, pageSize } = await getAuditLogs(filters);
+    return { ok: true, entries, filters: options, total, page, pageSize };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}

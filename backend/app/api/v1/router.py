@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from .admins import router as admins_router
+from .audit_logs import router as audit_logs_router
 from .auth import router as auth_router
 from .health import router as health_router
 from .invoices import router as invoices_router
@@ -15,6 +16,7 @@ api_router = APIRouter()
 api_router.include_router(health_router, tags=["health"])
 api_router.include_router(auth_router)
 api_router.include_router(admins_router)
+api_router.include_router(audit_logs_router)
 api_router.include_router(roles_router)
 api_router.include_router(permissions_router)
 api_router.include_router(plans_router)

@@ -12,6 +12,7 @@ import {
   disconnectSession,
   generateInvoices,
   getAdmins,
+  getAuditLogs,
   getInvoices,
   getMe,
   getNasDevices,
@@ -23,6 +24,7 @@ import {
   getSubscriberStats,
   getSubscribers,
   loadAdmins,
+  loadAuditLogs,
   loadInvoice,
   loadInvoices,
   loadMe,
@@ -920,5 +922,91 @@ describe("admin and role helpers", () => {
     const [url, init] = vi.mocked(fetch).mock.calls[0];
     expect(url).toBe("http://localhost:8000/api/v1/roles/6");
     expect(init?.method).toBe("DELETE");
+  });
+});
+
+describe("audit log helpers", () => {
+  const ENTRY = {
+    id: 5,
+    admin_id: 2,
+    admin_username: "superadmin",
+    action: "create",
+    resource: "plans",
+    resource_id: "3",
+    metadata_: { name: "Starter" },
+    created_at: "2026-08-20T10:00:00",
+  };
+  const FILTERS = {
+    actions: ["create", "login"],
+    resources: ["auth", "plans"],
+    admins: [{ id: 2, username: "superadmin" }],
+  };
+
+  it("getAuditLogs returns entries, filter options, and page metadata", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({ items: [ENTRY], filters: FILTERS, total: 12, page: 1, page_size: 20 }),
+    });
+
+    await expect(getAuditLogs()).resolves.toEqual({
+      entries: [ENTRY],
+      filters: FILTERS,
+      total: 12,
+      page: 1,
+      pageSize: 20,
+    });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/audit-logs?page_size=20",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("getAuditLogs forwards actor, action, resource, and paging params", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({
+        items: [],
+        filters: { actions: [], resources: [], admins: [] },
+        total: 0,
+        page: 2,
+        page_size: 50,
+      }),
+    });
+
+    await getAuditLogs({ adminId: 2, action: "create", resource: "plans", page: 2, pageSize: 50 });
+    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/audit-logs?page_size=50&page=2&admin_id=2&action=create&resource=plans",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
+        cache: "no-store",
+      }),
+    );
+  });
+
+  it("loadAuditLogs returns the page on success", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({ items: [ENTRY], filters: FILTERS, total: 12, page: 1, page_size: 20 }),
+    });
+
+    await expect(loadAuditLogs()).resolves.toEqual({
+      ok: true,
+      entries: [ENTRY],
+      filters: FILTERS,
+      total: 12,
+      page: 1,
+      pageSize: 20,
+    });
+  });
+
+  it("loadAuditLogs returns an error result instead of throwing", async () => {
+    mockFetch({ ok: false, status: 403 });
+    expect(await loadAuditLogs()).toEqual({
+      ok: false,
+      error: "request failed: HTTP 403",
+    });
   });
 });

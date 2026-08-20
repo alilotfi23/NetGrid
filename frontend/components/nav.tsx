@@ -10,6 +10,7 @@ const links = [
   { href: "/nas-devices", label: "NAS Devices" },
   { href: "/sessions", label: "Sessions" },
   { href: "/admins", label: "Admins" },
+  { href: "/audit-logs", label: "Audit Log" },
 ];
 
 export function Nav() {
