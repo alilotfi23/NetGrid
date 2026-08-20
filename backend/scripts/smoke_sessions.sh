@@ -56,10 +56,15 @@ check() {
     fi
 }
 
-http_code() { curl -s --max-time 60 -o /dev/null -w '%{http_code}' "$@"; }
+http_code() { curl -s --max-time 60 -o /dev/null -w '%{http_code}' "$@" || true; }
 
 psql_run() { ( cd "$REPO_ROOT" && $PSQL_CMD -c "$1" ) 2>/dev/null; }
-psql_value() { ( cd "$REPO_ROOT" && $PSQL_CMD -tA -c "$1" ) 2>/dev/null; }
+# `psql -tA -c "INSERT ... RETURNING id"` prints the row AND the command
+# tag ("INSERT 0 1") on stdout — take the first line so the captured id
+# stays a bare integer, and strip \r for Windows-hosted psql.
+psql_value() {
+    ( cd "$REPO_ROOT" && $PSQL_CMD -tA -c "$1" ) 2>/dev/null | tr -d '\r' | sed -n '1p'
+}
 
 # --- login ----------------------------------------------------------------
 echo "== login ==================================================================="
@@ -88,7 +93,7 @@ check "stats carries by_nas array" "true" \
 echo "== auth errors ============================================================="
 CODE="$(http_code "$BASE_URL/api/v1/sessions")"
 check "401 list without token" "401" "$CODE"
-CODE="$(http_code "$BASE_URL/api/v1/sessions/1/disconnect")"
+CODE="$(http_code -X POST "$BASE_URL/api/v1/sessions/1/disconnect")"
 check "401 disconnect without token" "401" "$CODE"
 
 # --- disconnect error paths not needing the DB ------------------------------
@@ -120,11 +125,13 @@ else
     # --- read side ---------------------------------------------------------
     echo "== read side ==============================================================="
     LIST="$(curl -sf --max-time 30 "$BASE_URL/api/v1/sessions?q=$SMOKE_USER" -H "$AUTH")"
-    check "search finds only the open session" "1" "$(printf '%s' "$LIST" | jq -r '.total')"
-    check "list item carries the username" "$SMOKE_USER" \
-        "$(printf '%s' "$LIST" | jq -r '.items[0].username')"
-    check "list item resolves nas ip" "192.0.2.1" \
-        "$(printf '%s' "$LIST" | jq -r '.items[0].nasipaddress')"
+    # Two open rows are seeded (open + dev_open); the closed row must NOT
+    # appear — total == 2 proves both the q filter and the live-only filter.
+    check "search returns only the 2 live sessions" "2" "$(printf '%s' "$LIST" | jq -r '.total')"
+    check "all returned sessions carry the username" "true" \
+        "$(printf '%s' "$LIST" | jq -r --arg u "$SMOKE_USER" 'all(.items[].username; . == $u)')"
+    check "nas ips resolved for both live sessions" "true" \
+        "$(printf '%s' "$LIST" | jq -r '[.items[].nasipaddress] | sort == ["192.0.2.1", "192.0.2.2"]')"
 
     # --- disconnect error paths needing rows ---------------------------------
     echo "== disconnect error paths (seeded) =========================================="

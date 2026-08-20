@@ -134,6 +134,7 @@ Two separate concerns — do not conflate them:
 /freeradius
   /raddb             # FreeRADIUS config, sql module config, schema
   README.md          # abuse-protection policy notes once implemented
+/scripts           # full-stack e2e smoke test (scripts/smoke_e2e.sh)
 /frontend
   /app               # Next.js routes
   /components        # incl. shadcn components
@@ -284,9 +285,9 @@ At the start of a session, scan this list top-down and resume at the first unche
 
 - [x] **Phase 13 — CI workflow**
   - GitHub Actions (`.github/workflows/ci.yml`): `pytest` + `ruff` (lint + format) + `mypy` on push; frontend `typecheck`/`lint`/`test` on push with `next build` nightly (`.github/workflows/nightly.yml`); RADIUS integration tests as a separate slower job
-- [ ] **Phase 13 (cont.) — hardening pass**
-  - Revisit the remaining Medium/Low items in Prioritized Recommendations (audit log wiring if not already done, README.md, indexing pass on `radacct`)
-  - End-to-end smoke test across the full stack via `docker compose up`
+- [x] **Phase 13 (cont.) — hardening pass**
+  - Revisit the remaining Medium/Low items in Prioritized Recommendations (audit log wiring if not already done, README.md, indexing pass on `radacct`) — all landed (audit log read API + viewer, README CI badge/section, `radacct` hardening indexes in the radius initdb scripts)
+  - End-to-end smoke test across the full stack via `docker compose up` — `scripts/smoke_e2e.sh`, run nightly in `.github/workflows/nightly.yml` (it builds every image, so it stays off the push path); the backend container now runs `alembic upgrade head` on startup, so a fresh `docker compose up` is fully provisioned
 
 ## Prioritized Recommendations (from architecture review)
 

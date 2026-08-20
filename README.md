@@ -48,16 +48,10 @@ docker compose up -d --build
 
 On first start, Postgres runs the initdb scripts that create the FreeRADIUS schema
 (`radacct`, `radcheck`, …), the hardening indexes, and the `netgrid_test` database. The
-**NetGrid app tables are created by Alembic**, which must be run once from the host:
-
-```bash
-# 3. Create the NetGrid tables (admins, subscribers, plans, ...)
-cd backend
-python -m venv .venv
-source .venv/Scripts/activate        # Windows (Git Bash); Unix: source .venv/bin/activate
-pip install -e ".[dev]"
-alembic upgrade head
-```
+**NetGrid app tables are created by Alembic automatically** — the backend container runs
+`alembic upgrade head` (idempotent) before uvicorn starts, so a fresh `docker compose up`
+is fully provisioned. You only need the host-side `alembic upgrade head` (below) when
+developing the backend on the host.
 
 ### Verify it's alive
 
@@ -155,6 +149,13 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push — see the statu
   (invoices, subscribers + plans, sessions)
 - **radius** (separate, slower) — builds FreeRADIUS and smoke-checks the RADIUS → `rlm_sql` →
   Postgres path via `radtest`, plus the scripted lockout tests under `backend/tests/radius`
+
+The nightly workflow (`.github/workflows/nightly.yml`) also runs a **full-stack e2e smoke**
+(`scripts/smoke_e2e.sh`): it brings up every service via `docker compose up`, proves the
+backend auto-migrates, logs an admin in through the compose backend, authenticates a
+subscriber created via the API through FreeRADIUS (and verifies suspending them flips the
+RADIUS verdict to reject), checks the frontend serves pages, then runs the API smoke
+scripts against the compose backend.
 
 ## Docs
 

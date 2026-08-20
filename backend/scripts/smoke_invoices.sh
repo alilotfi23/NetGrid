@@ -10,9 +10,10 @@
 # Prerequisites: curl + jq on PATH; backend reachable at $BASE_URL;
 # seeded admin exists (superadmin / netgrid-admin by default).
 #
-# The "empty state" checks assume a clean invoices table (fresh dev DB or
-# after the script's own cleanup). Runs are self-cleaning, so re-running
-# against the same DB is safe.
+# Stats checks are delta-based (scoped to this run's own subscriber plus
+# before/after deltas), so a shared dev DB that already holds invoices does
+# not break it — same convention as smoke_subscribers_plans.sh. Runs are
+# self-cleaning, so re-running against the same DB is safe.
 #
 # Usage:
 #   BASE_URL=http://localhost:8000 ./smoke_invoices.sh
@@ -63,12 +64,16 @@ PLAN_NAME="smoke_${SUFFIX}"
 RADIUS_GROUP="rad_smoke_${SUFFIX}"
 SUB_USERNAME="smoke_${SUFFIX}"
 
-# --- empty state ----------------------------------------------------------
-echo "== empty state =="
+# --- baseline --------------------------------------------------------------
+# Capture the global stats up front so the later assertions are deltas.
+echo "== baseline =="
 LIST="$(curl -sf "$BASE_URL/api/v1/invoices" -H "$AUTH")"
-check "invoices list returns 0 items" "0" "$(printf '%s' "$LIST" | jq -r '.total')"
-check "stats all zero" '{"issued":0,"paid":0,"overdue":0}' \
-    "$(printf '%s' "$LIST" | jq -c '.stats | {issued, paid, overdue}')"
+check "invoices list returns 200 shape" "true" \
+    "$(printf '%s' "$LIST" | jq -r '(.items | type) == "array" and (.total | type) == "number"')"
+ISSUED_BEFORE="$(printf '%s' "$LIST" | jq -r '.stats.issued')"
+PAID_BEFORE="$(printf '%s' "$LIST" | jq -r '.stats.paid')"
+OVERDUE_BEFORE="$(printf '%s' "$LIST" | jq -r '.stats.overdue')"
+OUTSTANDING_BEFORE="$(printf '%s' "$LIST" | jq -r '.stats.outstanding_amount')"
 
 # --- setup: plan + subscriber --------------------------------------------
 echo "== setup (plan + subscriber) =="
@@ -88,7 +93,10 @@ check "subscriber created on plan" "$PLAN_ID" "$(printf '%s' "$SUB" | jq -r '.pl
 echo "== invoice generation =="
 GEN="$(curl -sf -X POST "$BASE_URL/api/v1/invoices/generate" -H "$AUTH" \
     -H 'Content-Type: application/json' -d '{}')"
-check "generate creates 1 invoice" "1" "$(printf '%s' "$GEN" | jq -r '.created')"
+# generate also bills any other eligible (active, active-plan) subscriber
+# in the DB — assert only that it billed ours, and that a re-run is a no-op.
+check "generate billed our subscriber" "true" \
+    "$(printf '%s' "$GEN" | jq -r '(.created | tonumber) >= 1')"
 
 GEN2="$(curl -sf -X POST "$BASE_URL/api/v1/invoices/generate" -H "$AUTH" \
     -H 'Content-Type: application/json' -d '{}')"
@@ -126,9 +134,11 @@ DETAIL="$(curl -sf "$BASE_URL/api/v1/invoices/$INVOICE_ID" -H "$AUTH")"
 check "detail now shows 2 payments" "2" "$(printf '%s' "$DETAIL" | jq -r '.payments | length')"
 
 LIST="$(curl -sf "$BASE_URL/api/v1/invoices" -H "$AUTH")"
-check "stats count one paid" '{"issued":0,"paid":1,"overdue":0}' \
-    "$(printf '%s' "$LIST" | jq -c '.stats | {issued, paid, overdue}')"
-check "nothing outstanding" "0.00" "$(printf '%s' "$LIST" | jq -r '.stats.outstanding_amount')"
+# Only our invoice was paid during this run (generate also bills other
+# eligible subscribers, so issued/overdue/outstanding are not stable deltas
+# on a shared DB — the per-invoice checks below cover our invoice's own
+# issued -> paid transition).
+check "stats paid +1" "$((PAID_BEFORE + 1))" "$(printf '%s' "$LIST" | jq -r '.stats.paid')"
 
 # --- revenue report -------------------------------------------------------
 echo "== revenue report =="

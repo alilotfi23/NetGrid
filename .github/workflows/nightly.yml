@@ -1,8 +1,10 @@
 name: Nightly
 
 # The fast checks (typecheck, lint, tests) run on every push in ci.yml;
-# this workflow runs only the slower next build, which catches route/page
-# compile errors and dependency drift without blocking push CI.
+# this workflow runs the slower checks without blocking push CI: the next
+# build (catches route/page compile errors and dependency drift) and the
+# full-stack e2e smoke test (builds every image and proves the compose stack
+# interoperates end to end).
 on:
   schedule:
     # Random minute (17) to avoid the top-of-hour surge of scheduled runs.
@@ -36,3 +38,25 @@ jobs:
       # at request time, so the build is purely a compile check.
       - name: Build
         run: npm run build
+
+  full-stack-smoke:
+    name: Full-stack e2e smoke (docker compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Builds all five images and proves they interoperate: the backend
+      # auto-migrates on startup, a subscriber created through the API can
+      # authenticate through FreeRADIUS (and is rejected when suspended),
+      # the frontend serves pages that reach the API through the compose
+      # network, and the API smoke scripts pass against the compose backend.
+      - name: Full-stack smoke test
+        run: ./scripts/smoke_e2e.sh
+
+      - name: Dump compose logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

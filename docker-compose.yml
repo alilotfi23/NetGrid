@@ -47,16 +47,27 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://netgrid:netgrid@postgres:5432/netgrid
       REDIS_URL: redis://redis:6379/0
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Migrations run before uvicorn on every start (idempotent), so a fresh
+    # `docker compose up` is fully provisioned with no host-side step. The
+    # alembic mounts keep dev containers in sync with local migration files.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
       - "8000:8000"
     volumes:
       - ./backend/app:/app/app
+      - ./backend/alembic.ini:/app/alembic.ini
+      - ./backend/alembic:/app/alembic
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 20s
     networks: [netgrid]
 
   frontend:
@@ -66,7 +77,14 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+      start_period: 30s
     networks: [netgrid]
 
 networks:
