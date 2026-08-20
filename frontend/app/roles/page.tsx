@@ -2,21 +2,30 @@ import Link from "next/link";
 
 import { Nav } from "@/components/nav";
 import { RoleDeleteButton } from "@/components/role-delete-button";
-import { type Role, loadRoles } from "@/lib/api";
+import { type Role, loadAdmins, loadRoles } from "@/lib/api";
 import { permissionLabel } from "@/lib/format";
+import { countRoleMembers } from "@/lib/role-members";
 
 // Live data fetched with a runtime token — never prerender.
 export const dynamic = "force-dynamic";
 
 const PERMISSION_CHIPS = 4;
 
-function RoleTable({ roles }: { roles: Role[] }) {
+function RoleTable({
+  roles,
+  memberCounts,
+}: {
+  roles: Role[];
+  /** role id -> admin count; undefined hides the Members column entirely. */
+  memberCounts?: Map<number, number>;
+}) {
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
       <table className="w-full text-left text-sm">
         <thead className="border-b border-zinc-200 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
           <tr>
             <th className="px-4 py-3 font-medium">Role</th>
+            {memberCounts && <th className="px-4 py-3 font-medium">Members</th>}
             <th className="px-4 py-3 font-medium">Permissions</th>
             <th className="px-4 py-3" />
           </tr>
@@ -32,6 +41,11 @@ function RoleTable({ roles }: { roles: Role[] }) {
                   </div>
                 )}
               </td>
+              {memberCounts && (
+                <td className="px-4 py-3 tabular-nums">
+                  {memberCounts.get(role.id) ?? 0}
+                </td>
+              )}
               <td className="px-4 py-3">
                 {role.permissions.length === 0 ? (
                   <span className="text-zinc-400 dark:text-zinc-600">No permissions</span>
@@ -73,7 +87,10 @@ function RoleTable({ roles }: { roles: Role[] }) {
 }
 
 export default async function RolesPage() {
-  const result = await loadRoles();
+  const [result, admins] = await Promise.all([loadRoles(), loadAdmins()]);
+  // member counts need admins:read; without it (or on any error) the Members
+  // column is simply hidden — the roles list itself never degrades.
+  const memberCounts = admins.ok ? countRoleMembers(admins.admins) : undefined;
 
   return (
     <main className="flex min-h-screen flex-col bg-zinc-50 font-sans dark:bg-black">
@@ -121,7 +138,7 @@ export default async function RolesPage() {
             No roles yet. Create the first one.
           </p>
         ) : (
-          <RoleTable roles={result.roles} />
+          <RoleTable roles={result.roles} memberCounts={memberCounts} />
         )}
       </div>
     </main>
