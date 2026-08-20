@@ -5,6 +5,7 @@ skips caching, so RBAC never breaks auth.
 """
 
 import json
+import os
 from dataclasses import dataclass
 
 from sqlalchemy import select
@@ -14,7 +15,11 @@ from app.core.rbac import PERM_CACHE_TTL_SECONDS, version_of
 from app.core.redis import get_redis
 from app.models.rbac import Admin, Permission, Role, admin_roles, role_permissions
 
-CACHE_KEY = "rbac:perms:{}"
+# Under pytest-xdist each worker runs its own database where admin ids start
+# at 1 again — a shared cache keyed only by admin id would serve one worker's
+# permission set to another's. Namespace by worker when running in parallel.
+_worker = os.environ.get("PYTEST_XDIST_WORKER", "")
+CACHE_KEY = f"rbac:perms:{_worker}:{{}}" if _worker else "rbac:perms:{}"
 
 
 @dataclass(frozen=True)

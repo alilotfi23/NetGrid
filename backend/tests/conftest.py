@@ -1,5 +1,8 @@
+import os
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.models  # noqa: F401  # register every model on Base.metadata
@@ -9,6 +12,45 @@ from app.core.rate_limit import limiter as app_limiter
 from app.core.redis import get_redis
 from app.main import create_app
 from app.models.base import Base
+
+
+def _test_database_url() -> str:
+    """The test DB URL, per pytest-xdist worker when running in parallel.
+
+    pytest-xdist sets ``PYTEST_XDIST_WORKER`` (e.g. ``gw0``) in each worker
+    process. Serial runs — no xdist, or the master controller where the env
+    var is unset — use the configured ``netgrid_test`` database as before.
+    Parallel workers each get their own database (``netgrid_test_gw0``,
+    ``netgrid_test_gw1``, ...) because the function-scoped session fixture
+    drops and recreates every table per test: a shared database would let
+    one worker's drop_all clobber another worker's in-flight test.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    base = get_settings().test_database_url
+    if not worker or worker == "master":
+        return base
+    return base.rsplit("/", 1)[0] + f"/netgrid_test_{worker}"
+
+
+async def _ensure_database(name: str) -> None:
+    """Create the worker database if missing (netgrid owns the postgres server).
+
+    CREATE DATABASE cannot run inside a transaction, so the maintenance
+    connection uses AUTOCOMMIT; it connects to the always-present ``netgrid``
+    database (not the target) so a missing target never breaks the connect.
+    """
+    settings = get_settings()
+    maintenance = settings.test_database_url.rsplit("/", 1)[0] + "/netgrid"
+    admin_engine = create_async_engine(maintenance, isolation_level="AUTOCOMMIT")
+    try:
+        async with admin_engine.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": name}
+            )
+            if not exists:
+                await conn.execute(text(f'CREATE DATABASE "{name}"'))
+    finally:
+        await admin_engine.dispose()
 
 
 async def _clear_rbac_cache() -> None:
@@ -33,7 +75,10 @@ async def engine():
     # Function-scoped so each test's event loop owns its connection pool; a
     # session-scoped engine would hand pooled connections across loops and
     # asyncpg raises "another operation is in progress".
-    engine = create_async_engine(get_settings().test_database_url)
+    url = _test_database_url()
+    if url != get_settings().test_database_url:
+        await _ensure_database(url.rsplit("/", 1)[1])
+    engine = create_async_engine(url)
     yield engine
     await engine.dispose()
 
