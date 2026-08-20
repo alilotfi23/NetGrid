@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { GenerateInvoicesButton } from "@/components/generate-invoices-button";
+import { InvoicePagination } from "@/components/invoice-pagination";
 import { Nav } from "@/components/nav";
 import { RevenueReportCard } from "@/components/revenue-report-card";
 import { type Invoice, loadInvoices } from "@/lib/api";
@@ -96,19 +97,31 @@ function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
   );
 }
 
+const DEFAULT_PAGE_SIZE = 20;
+
+/** Parse a positive integer query param, falling back to a default. */
+function intParam(value: string | undefined, fallback: number): number {
+  if (value == null) return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : fallback;
+}
+
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; year?: string }>;
+  searchParams: Promise<{ status?: string; year?: string; page?: string; page_size?: string }>;
 }) {
-  const { status, year } = await searchParams;
+  const { status, year, page, page_size } = await searchParams;
   // only forward a valid calendar year (2000-2100, matching the backend's
   // query validation); anything else is treated as "all years"
   const parsedYear = year != null ? Number(year) : NaN;
   const reportYear = Number.isInteger(parsedYear) && parsedYear >= 2000 && parsedYear <= 2100
     ? parsedYear
     : undefined;
-  const result = await loadInvoices(status ? { status } : undefined);
+  // page_size is clamped to the backend's 1-100 range
+  const pageSize = Math.min(100, intParam(page_size, DEFAULT_PAGE_SIZE));
+  const pageNumber = intParam(page, 1);
+  const result = await loadInvoices({ status, page: pageNumber, pageSize });
 
   const tiles = [
     { key: "issued", label: "Issued", className: "text-sky-600 dark:text-sky-400" },
@@ -191,15 +204,24 @@ export default async function InvoicesPage({
 
             {result.invoices.length === 0 ? (
               <p className="mt-4 rounded-xl border border-zinc-200 bg-white p-5 text-sm text-zinc-500 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-                {status
-                  ? `No ${status} invoices.`
-                  : "No invoices yet. Generate them for the current month."}
+                {result.total > 0
+                  ? "No invoices on this page."
+                  : status
+                    ? `No ${status} invoices.`
+                    : "No invoices yet. Generate them for the current month."}
               </p>
             ) : (
               <div className="mt-4">
                 <InvoiceTable invoices={result.invoices} />
               </div>
             )}
+            <InvoicePagination
+              page={result.page}
+              pageSize={result.pageSize}
+              total={result.total}
+              status={status}
+              year={reportYear != null ? String(reportYear) : undefined}
+            />
           </>
         )}
       </div>

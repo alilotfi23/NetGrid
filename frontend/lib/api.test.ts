@@ -589,15 +589,21 @@ describe("invoice helpers", () => {
     total_revenue: "35.00",
   };
 
-  it("getInvoices returns the paginated items plus global stats", async () => {
+  it("getInvoices returns the paginated items plus stats and page metadata", async () => {
     mockFetch({
       ok: true,
-      json: async () => ({ items: [INVOICE], total: 1, page: 1, page_size: 100, stats: STATS }),
+      json: async () => ({ items: [INVOICE], total: 42, page: 2, page_size: 20, stats: STATS }),
     });
 
-    await expect(getInvoices()).resolves.toEqual({ invoices: [INVOICE], stats: STATS });
+    await expect(getInvoices()).resolves.toEqual({
+      invoices: [INVOICE],
+      stats: STATS,
+      total: 42,
+      page: 2,
+      pageSize: 20,
+    });
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      "http://localhost:8000/api/v1/invoices?page_size=100",
+      "http://localhost:8000/api/v1/invoices?page_size=20",
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
         cache: "no-store",
@@ -605,12 +611,12 @@ describe("invoice helpers", () => {
     );
   });
 
-  it("getInvoices passes the status filter through to the API", async () => {
-    mockFetch({ ok: true, json: async () => ({ items: [], stats: STATS }) });
+  it("getInvoices forwards page, page_size, and the status filter", async () => {
+    mockFetch({ ok: true, json: async () => ({ items: [], total: 0, page: 1, page_size: 20, stats: STATS }) });
 
-    await getInvoices({ status: "overdue" });
+    await getInvoices({ status: "overdue", page: 3, pageSize: 50 });
     expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      "http://localhost:8000/api/v1/invoices?page_size=100&status=overdue",
+      "http://localhost:8000/api/v1/invoices?page_size=50&page=3&status=overdue",
       expect.objectContaining({
         headers: expect.objectContaining({ Authorization: "Bearer tok123" }),
         cache: "no-store",
@@ -618,13 +624,20 @@ describe("invoice helpers", () => {
     );
   });
 
-  it("loadInvoices returns invoices and stats on success", async () => {
+  it("loadInvoices returns invoices, stats, and page metadata on success", async () => {
     mockFetch({
       ok: true,
-      json: async () => ({ items: [INVOICE], total: 1, page: 1, page_size: 100, stats: STATS }),
+      json: async () => ({ items: [INVOICE], total: 42, page: 2, page_size: 20, stats: STATS }),
     });
 
-    await expect(loadInvoices()).resolves.toEqual({ ok: true, invoices: [INVOICE], stats: STATS });
+    await expect(loadInvoices({ page: 2 })).resolves.toEqual({
+      ok: true,
+      invoices: [INVOICE],
+      stats: STATS,
+      total: 42,
+      page: 2,
+      pageSize: 20,
+    });
   });
 
   it("loadInvoices returns an error result instead of throwing", async () => {

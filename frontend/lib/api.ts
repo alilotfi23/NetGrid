@@ -470,24 +470,49 @@ export type PaymentReport = {
   total_revenue: string;
 };
 
-export async function getInvoices(
-  filters?: { status?: string },
-): Promise<{ invoices: Invoice[]; stats: InvoiceStats }> {
-  const params = new URLSearchParams({ page_size: "100" });
+export type InvoiceListFilters = {
+  status?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type InvoicePage = {
+  invoices: Invoice[];
+  stats: InvoiceStats;
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export async function getInvoices(filters?: InvoiceListFilters): Promise<InvoicePage> {
+  const params = new URLSearchParams({ page_size: String(filters?.pageSize ?? 20) });
+  if (filters?.page != null) params.set("page", String(filters.page));
   if (filters?.status) params.set("status", filters.status);
   const res = await apiFetch(`/api/v1/invoices?${params.toString()}`);
-  const page = (await res.json()) as { items: Invoice[]; stats: InvoiceStats };
-  return { invoices: page.items, stats: page.stats };
+  const page = (await res.json()) as {
+    items: Invoice[];
+    stats: InvoiceStats;
+    total: number;
+    page: number;
+    page_size: number;
+  };
+  return {
+    invoices: page.items,
+    stats: page.stats,
+    total: page.total,
+    page: page.page,
+    pageSize: page.page_size,
+  };
 }
 
 export type InvoicesResult =
-  | { ok: true; invoices: Invoice[]; stats: InvoiceStats }
+  | ({ ok: true } & InvoicePage)
   | { ok: false; error: string };
 
-export async function loadInvoices(filters?: { status?: string }): Promise<InvoicesResult> {
+export async function loadInvoices(filters?: InvoiceListFilters): Promise<InvoicesResult> {
   try {
-    const { invoices, stats } = await getInvoices(filters);
-    return { ok: true, invoices, stats };
+    const { invoices, stats, total, page, pageSize } = await getInvoices(filters);
+    return { ok: true, invoices, stats, total, page, pageSize };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
