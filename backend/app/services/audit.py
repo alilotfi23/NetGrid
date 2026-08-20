@@ -109,9 +109,7 @@ async def get_admin_usernames(session: AsyncSession, ids: list[int]) -> dict[int
     """Map admin id -> username for the API layer's display fields."""
     if not ids:
         return {}
-    rows = (
-        await session.execute(select(Admin.id, Admin.username).where(Admin.id.in_(ids)))
-    ).all()
+    rows = (await session.execute(select(Admin.id, Admin.username).where(Admin.id.in_(ids)))).all()
     return {admin_id: username for admin_id, username in rows}
 
 

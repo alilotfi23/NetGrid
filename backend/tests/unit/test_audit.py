@@ -53,9 +53,7 @@ async def test_record_permission_denied(session):
 
 
 async def _seed_two_admins(session):
-    alice = Admin(
-        username="alice", email="alice@netgrid.local", password_hash=hash_password("x")
-    )
+    alice = Admin(username="alice", email="alice@netgrid.local", password_hash=hash_password("x"))
     bob = Admin(username="bob", email="bob@netgrid.local", password_hash=hash_password("x"))
     session.add_all([alice, bob])
     await session.commit()

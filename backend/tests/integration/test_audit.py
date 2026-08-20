@@ -120,9 +120,7 @@ async def test_audit_logs_lists_filters_and_joins_username(client, session):
     """The list joins admin usernames, exposes filter options, and filters work."""
     await _seed_admin(session, "boss", codes=("*:*",))
     boss_token = await _login(client, "boss")  # audited as action=login, resource=auth
-    boss_id = (
-        await session.execute(select(Admin.id).where(Admin.username == "boss"))
-    ).scalar_one()
+    boss_id = (await session.execute(select(Admin.id).where(Admin.username == "boss"))).scalar_one()
 
     resp = await client.post(
         "/api/v1/plans",
