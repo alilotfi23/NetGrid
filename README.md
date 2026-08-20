@@ -10,6 +10,10 @@ FreeRADIUS (`rlm_sql_postgresql`) · Redis · Docker Compose
 > Architecture decisions, conventions, and build-phase tracking live in [`CLAUDE.md`](./CLAUDE.md).
 > This README is the human onboarding quickstart.
 
+<!-- Fill in the GitHub owner/repo when the project gets a remote (git remote add origin …);
+     the badge shows the CI workflow's check state on main. -->
+[![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/<owner>/<repo>/actions/workflows/ci.yml)
+
 ---
 
 ## Repository layout
@@ -141,12 +145,16 @@ npm run dev                  # http://localhost:3000
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every push:
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push — see the status badge at the
+[top of this README](#netgrid):
 
-- **backend** — ruff, mypy, and pytest against a compose-provisioned Postgres (same initdb
-  scripts as local dev)
+- **backend** — `ruff` (lint + format), `mypy`, and `pytest` against a compose-provisioned
+  Postgres (same initdb scripts as local dev)
+- **frontend** — `typecheck` (`tsc --noEmit`), `eslint`, the Vitest suite, and `next build`
+- **smoke** — boots the API against migrated DBs and runs the self-cleaning smoke scripts
+  (invoices, subscribers + plans, sessions)
 - **radius** (separate, slower) — builds FreeRADIUS and smoke-checks the RADIUS → `rlm_sql` →
-  Postgres path via `radtest`, plus scripted tests under `backend/tests/radius` once they exist
+  Postgres path via `radtest`, plus the scripted lockout tests under `backend/tests/radius`
 
 ## Docs
 
