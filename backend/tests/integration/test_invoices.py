@@ -403,3 +403,42 @@ async def test_scheduled_job_via_api_uses_default_period(client, session):
     assert invoices[0].period_start == date.today().replace(day=1)
     # overdue pass ran too, but a same-month invoice is never overdue
     assert invoices[0].status == "issued"
+
+
+async def test_overdue_sweep_surfaces_amount_in_stats(client, session):
+    """The daily overdue sweep flips past-due invoices, and the stats expose
+    an overdue-only amount so the dashboard can surface it prominently."""
+    from app.services import billing as billing_service
+
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    plan = await _create_plan(client, token)
+    await _create_subscriber(client, token, "bob", plan["id"])
+
+    resp = await client.post(
+        "/api/v1/invoices/generate",
+        json={"period_start": "2020-01-01", "period_end": "2020-01-31"},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["created"] == 1
+
+    # nothing overdue until the daily sweep runs
+    body = (await client.get("/api/v1/invoices", headers=_auth(token))).json()
+    assert body["stats"]["overdue"] == 0
+    assert body["stats"]["overdue_amount"] == "0.00"
+
+    # the daily job's sweep flips the past-due invoice to overdue
+    marked = await billing_service.mark_overdue_invoices(session)
+    assert marked == 1
+
+    body = (await client.get("/api/v1/invoices", headers=_auth(token))).json()
+    assert body["stats"]["overdue"] == 1
+    assert body["stats"]["overdue_amount"] == "10.00"
+    assert body["stats"]["outstanding_amount"] == "10.00"
+
+    # the status filter surfaces the overdue invoice (dashboard banner link)
+    resp = await client.get("/api/v1/invoices?status=overdue", headers=_auth(token))
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 1
+    assert resp.json()["items"][0]["status"] == "overdue"

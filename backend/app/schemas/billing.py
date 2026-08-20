@@ -42,12 +42,13 @@ class InvoiceOut(BaseModel):
 
 
 class InvoiceStats(BaseModel):
-    """Status-count snapshot plus the outstanding (unpaid) total."""
+    """Status-count snapshot plus the outstanding (unpaid) totals."""
 
     issued: int
     paid: int
     overdue: int
     outstanding_amount: Decimal
+    overdue_amount: Decimal
 
 
 class InvoiceList(Page[InvoiceOut]):

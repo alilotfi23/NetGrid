@@ -580,6 +580,7 @@ describe("invoice helpers", () => {
     paid: 0,
     overdue: 0,
     outstanding_amount: "10.00",
+    overdue_amount: "0.00",
   };
   const REPORT = {
     items: [

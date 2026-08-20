@@ -129,8 +129,19 @@ async def get_invoice_stats(session: AsyncSession) -> dict[str, int | Decimal]:
             )
         )
     ).scalar_one()
+    overdue_amount = (
+        await session.execute(
+            select(func.coalesce(func.sum(Invoice.amount), 0)).where(
+                Invoice.status == INVOICE_OVERDUE
+            )
+        )
+    ).scalar_one()
     # quantize so an empty balance serializes as "0.00", not "0"
-    return {**counts, "outstanding_amount": Decimal(outstanding).quantize(CENT)}
+    return {
+        **counts,
+        "outstanding_amount": Decimal(outstanding).quantize(CENT),
+        "overdue_amount": Decimal(overdue_amount).quantize(CENT),
+    }
 
 
 async def get_subscriber_usernames(session: AsyncSession, ids: list[int]) -> dict[int, str]:

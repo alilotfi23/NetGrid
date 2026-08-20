@@ -386,6 +386,31 @@ async def test_get_invoice_stats_counts_and_outstanding(session):
         "paid": 1,
         "overdue": 0,
         "outstanding_amount": Decimal("10.00"),
+        "overdue_amount": Decimal("0.00"),
+    }
+
+
+async def test_get_invoice_stats_tracks_overdue_amount(session):
+    plan = await _seed_plan(session, price="10.00")
+    await _seed_subscriber(session, "bob", plan_id=plan.id)
+    await _seed_subscriber(session, "alice", plan_id=plan.id)
+    await billing_service.generate_invoices(
+        session, period_start=date(2020, 1, 1), period_end=date(2020, 1, 31)
+    )
+    # both invoices are past due; only bob's flips (alice's is paid first)
+    invoices = await _invoices(session)
+    invoices[0].status = "paid"
+    await session.commit()
+    marked = await billing_service.mark_overdue_invoices(session)
+    assert marked == 1
+
+    stats = await billing_service.get_invoice_stats(session)
+    assert stats == {
+        "issued": 0,
+        "paid": 1,
+        "overdue": 1,
+        "outstanding_amount": Decimal("10.00"),
+        "overdue_amount": Decimal("10.00"),
     }
 
 
@@ -396,6 +421,7 @@ async def test_get_invoice_stats_empty(session):
         "paid": 0,
         "overdue": 0,
         "outstanding_amount": Decimal("0.00"),
+        "overdue_amount": Decimal("0.00"),
     }
 
 

@@ -456,6 +456,7 @@ export type InvoiceStats = {
   paid: number;
   overdue: number;
   outstanding_amount: string;
+  overdue_amount: string;
 };
 
 export type PaymentReportRow = {
