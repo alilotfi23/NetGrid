@@ -48,7 +48,7 @@ jobs:
         run: pytest -q --ignore=tests/radius
 
   frontend:
-    name: Frontend — typecheck, lint, test, build
+    name: Frontend — typecheck, lint, test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -74,10 +74,9 @@ jobs:
       - name: Tests
         run: npm test
 
-      # next build catches route/page compile errors (the backend is not
-      # needed — every page is force-dynamic and fetches at request time).
-      - name: Build
-        run: npm run build
+      # next build is slower and catches compile/routing issues rather than
+      # test regressions, so it runs nightly (see .github/workflows/nightly.yml)
+      # instead of blocking every push.
 
   smoke:
     name: API smoke tests (invoices + sessions)

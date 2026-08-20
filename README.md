@@ -150,7 +150,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push — see the statu
 
 - **backend** — `ruff` (lint + format), `mypy`, and `pytest` against a compose-provisioned
   Postgres (same initdb scripts as local dev)
-- **frontend** — `typecheck` (`tsc --noEmit`), `eslint`, the Vitest suite, and `next build`
+- **frontend** — `typecheck` (`tsc --noEmit`), `eslint`, and the Vitest suite on push; `next build` runs nightly (`.github/workflows/nightly.yml`) to catch compile/routing drift without slowing push CI
 - **smoke** — boots the API against migrated DBs and runs the self-cleaning smoke scripts
   (invoices, subscribers + plans, sessions)
 - **radius** (separate, slower) — builds FreeRADIUS and smoke-checks the RADIUS → `rlm_sql` →

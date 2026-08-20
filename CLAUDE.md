@@ -283,7 +283,7 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Component tests (Vitest + RTL) for forms and client-side sort/filter tables
 
 - [x] **Phase 13 — CI workflow**
-  - GitHub Actions (`.github/workflows/ci.yml`): `pytest` + `ruff` (lint + format) + `mypy` on push; frontend `typecheck`/`lint`/`test`/`build`; RADIUS integration tests as a separate slower job
+  - GitHub Actions (`.github/workflows/ci.yml`): `pytest` + `ruff` (lint + format) + `mypy` on push; frontend `typecheck`/`lint`/`test` on push with `next build` nightly (`.github/workflows/nightly.yml`); RADIUS integration tests as a separate slower job
 - [ ] **Phase 13 (cont.) — hardening pass**
   - Revisit the remaining Medium/Low items in Prioritized Recommendations (audit log wiring if not already done, README.md, indexing pass on `radacct`)
   - End-to-end smoke test across the full stack via `docker compose up`
