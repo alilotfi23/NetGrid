@@ -1,15 +1,13 @@
 import { loadSubscriberStats } from "@/lib/api";
-import { StatsCardView } from "./stats-card-view";
+import { StatsCardClient } from "./stats-card-client";
 
 /**
  * Dashboard card for subscriber counts. A server component: fetches the
- * backend server-side (no CORS, token stays out of the browser) and renders
- * the presentational view with either data or an error state.
+ * backend server-side (token stays out of the browser) and hands the result
+ * to the polling client as the initial render, so the first paint is instant
+ * and the card then refreshes every 30s.
  */
 export async function StatsCard() {
-  const result = await loadSubscriberStats();
-  if (!result.ok) {
-    return <StatsCardView error={result.error} />;
-  }
-  return <StatsCardView stats={result.stats} />;
+  const initial = await loadSubscriberStats();
+  return <StatsCardClient initial={initial} />;
 }

@@ -8,6 +8,7 @@
 
 import { cookies } from "next/headers";
 
+import type { RevenueTrendPoint } from "./revenue-trend";
 import { ACCESS_COOKIE } from "./auth";
 
 const DEFAULT_BACKEND_URL = "http://localhost:8000";
@@ -61,6 +62,11 @@ export type DashboardKpis = {
 
 export type DashboardKpisResult =
   | { ok: true; kpis: DashboardKpis }
+  | { ok: false; error: string };
+
+/** The trailing-12-month revenue series for the dashboard trend card. */
+export type RevenueTrendResult =
+  | { ok: true; points: RevenueTrendPoint[] }
   | { ok: false; error: string };
 
 export type Plan = {
