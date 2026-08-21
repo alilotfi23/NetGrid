@@ -9,8 +9,9 @@ the NAS later sends its Accounting-Stop — FastAPI never writes radacct.
 """
 
 import asyncio
+import select as os_select
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pyrad.client
 import pyrad.dictionary
@@ -27,6 +28,39 @@ from app.services import audit as audit_service
 # RFC 5176 reserves 3799 for CoA and Disconnect traffic (pyrad's coaport).
 DISCONNECT_PORT = 3799
 
+# pyrad's client polls its socket with select.poll(), which POSIX provides
+# but Windows does not — without a stand-in, the disconnect path crashes
+# before a single byte is sent on Windows dev hosts (the compose backend,
+# running Linux, is unaffected). Patching the shared module object (pyrad
+# looks up select.poll at call time) installs a select.select()-based
+# replacement so the pyrad Client can wait for the NAS reply everywhere.
+if not hasattr(os_select, "poll"):
+
+    class _SelectPoll:
+        """Minimal select.poll() stand-in built on select.select()."""
+
+        def __init__(self) -> None:
+            # Any: pyrad registers socket objects (or fds) here; select()
+            # only reads them, so the exact type is irrelevant.
+            self._readers: list[Any] = []
+
+        def register(self, fd: object, _events: int = 0) -> None:
+            self._readers.append(fd)
+
+        def unregister(self, fd: object) -> None:
+            try:
+                self._readers.remove(fd)
+            except ValueError:
+                pass
+
+        def poll(self, timeout_ms: int | None = None) -> list[tuple[object, int]]:
+            timeout = None if timeout_ms is None else timeout_ms / 1000.0
+            readable, _, _ = os_select.select(self._readers, [], [], timeout)
+            return [(fd, os_select.POLLIN) for fd in readable]  # type: ignore[attr-defined]
+
+    os_select.POLLIN = 0x0001  # type: ignore[attr-defined]
+    os_select.poll = _SelectPoll  # type: ignore[attr-defined]
+
 # pyrad does not ship a dictionary, and FreeRADIUS's full dictionary is not
 # present in the backend image — vendor the handful of attributes we encode.
 _DICTIONARY_FILE = Path(__file__).parent / "radius_dictionary.txt"
@@ -39,18 +73,21 @@ def send_disconnect_request(
     username: str,
     acct_session_id: str | None,
     framed_ip: str | None,
+    port: int = DISCONNECT_PORT,
 ) -> int:
     """Send one Disconnect-Request to the NAS and return the reply code.
 
     Synchronous (pyrad is a blocking socket client) — callers run this via
     asyncio.to_thread. Raises pyrad.client.Timeout when the NAS does not
-    reply within the retry budget.
+    reply within the retry budget. ``port`` defaults to the RFC 5176
+    disconnect port (3799) and is injectable for tests.
     """
     dictionary = pyrad.dictionary.Dictionary(str(_DICTIONARY_FILE))
     client = pyrad.client.Client(
         server=nas_ip,
         secret=secret.encode(),
         dict=dictionary,
+        coaport=port,
         timeout=5,
         retries=2,
     )

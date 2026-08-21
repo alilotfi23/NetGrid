@@ -61,6 +61,92 @@ async def _audit_rows(session) -> list[AuditLog]:
     return list((await session.execute(select(AuditLog))).scalars().all())
 
 
+async def test_send_disconnect_request_round_trip_reaches_the_nas():
+    """The pyrad client really sends the packet and accepts the reply.
+
+    A UDP listener plays the NAS on an ephemeral port; the request must
+    arrive with the session identity attributes and the signed Disconnect-
+    ACK must come back. Runs on Windows too — importing the disconnect
+    service installs the select.poll() stand-in pyrad needs there.
+    """
+    import asyncio
+    import hashlib
+    import hmac
+    import queue
+    import socket
+    import struct
+    import threading
+
+    secret = b"roundtrip-secret"
+    received: queue.Queue = queue.Queue()
+
+    def rad_attr(attr_type: int, value: bytes) -> bytes:
+        return bytes([attr_type, len(value) + 2]) + value
+
+    def decode_attributes(raw: bytes) -> dict[int, bytes]:
+        attrs: dict[int, bytes] = {}
+        pos = 20
+        while pos + 2 <= len(raw):
+            attr_type, length = raw[pos], raw[pos + 1]
+            if length < 2 or pos + length > len(raw):
+                break
+            attrs[attr_type] = raw[pos + 2 : pos + length]
+            pos += length
+        return attrs
+
+    def nas_server(sock: socket.socket) -> None:
+        raw, addr = sock.recvfrom(4096)
+        received.put(raw)
+        # signed Disconnect-ACK (code 41) with a Message-Authenticator
+        req_auth = raw[4:20]
+        ident = raw[1]
+        ma_zero = b"\x00" * 16
+        attrs = rad_attr(80, ma_zero)
+        code = pyrad.packet.DisconnectACK
+        length = 20 + len(attrs)
+        ma = hmac.new(
+            secret,
+            bytes([code, ident]) + struct.pack("!H", length) + req_auth + attrs,
+            hashlib.md5,
+        ).digest()
+        attrs = rad_attr(80, ma)
+        length = 20 + len(attrs)
+        resp_auth = hashlib.md5(
+            bytes([code, ident]) + struct.pack("!H", length) + req_auth + attrs + secret
+        ).digest()
+        sock.sendto(
+            bytes([code, ident]) + struct.pack("!H", length) + resp_auth + attrs,
+            addr,
+        )
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.settimeout(5)
+        port = listener.getsockname()[1]
+        thread = threading.Thread(target=nas_server, args=(listener,), daemon=True)
+        thread.start()
+
+        reply_code = await asyncio.to_thread(
+            disconnect_service.send_disconnect_request,
+            "127.0.0.1",
+            secret.decode(),
+            username="bob",
+            acct_session_id="abc123",
+            framed_ip="10.0.0.5",
+            port=port,
+        )
+        thread.join(timeout=5)
+
+    assert reply_code == pyrad.packet.DisconnectACK
+    raw = received.get_nowait()
+    assert raw[0] == pyrad.packet.DisconnectRequest
+    attrs = decode_attributes(raw)
+    assert attrs[1] == b"bob"  # User-Name
+    assert attrs[44] == b"abc123"  # Acct-Session-Id
+    assert socket.inet_ntoa(attrs[8]) == "10.0.0.5"  # Framed-IP-Address
+    assert 80 in attrs  # Message-Authenticator was on the wire
+
+
 async def test_disconnect_ack_returns_disconnected(session, monkeypatch):
     admin = await _seed_admin(session)
     row = _seed_session(session)
