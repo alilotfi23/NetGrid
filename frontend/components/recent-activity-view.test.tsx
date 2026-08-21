@@ -52,14 +52,24 @@ describe("RecentActivityView", () => {
     expect(screen.getByText(/sessions/)).toBeTruthy();
   });
 
-  it("labels system actors and shows the empty state", () => {
+  it("links actors to the audit log filtered to their entries", () => {
+    render(<RecentActivityView entries={[entry()]} />);
+
+    const link = screen.getByRole("link", { name: /superadmin/ });
+    expect(link.getAttribute("href")).toBe("/audit-logs?admin_id=1");
+  });
+
+  it("labels system actors without a link", () => {
     render(
       <RecentActivityView
         entries={[entry({ admin_id: null, admin_username: null, resource: "invoices" })]}
       />,
     );
+    expect(screen.queryByRole("link", { name: /system/ })).toBeNull();
     expect(screen.getByText(/system/)).toBeTruthy();
+  });
 
+  it("shows the empty state", () => {
     render(<RecentActivityView entries={[]} />);
     expect(screen.getByText(/No recent activity yet/)).toBeTruthy();
   });

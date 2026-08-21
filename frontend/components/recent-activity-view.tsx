@@ -101,7 +101,17 @@ export function RecentActivityView({ entries }: { entries: AuditLogEntry[] }) {
                   )}
                 </div>
                 <div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
-                  {entry.admin_username ?? "system"} · {formatRelativeTime(entry.created_at)}
+                  {entry.admin_id != null ? (
+                    <Link
+                      href={`/audit-logs?admin_id=${entry.admin_id}`}
+                      className="font-medium text-zinc-500 transition-colors hover:text-indigo-600 hover:underline dark:text-zinc-400 dark:hover:text-indigo-400"
+                    >
+                      {entry.admin_username ?? "system"}
+                    </Link>
+                  ) : (
+                    <span className="text-zinc-400 dark:text-zinc-500">system</span>
+                  )}{" "}
+                  · {formatRelativeTime(entry.created_at)}
                 </div>
               </li>
             );
