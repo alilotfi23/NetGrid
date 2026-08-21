@@ -1,6 +1,7 @@
 import { Nav } from "@/components/nav";
 import { DashboardKpis } from "@/components/dashboard-kpis";
 import { NasStatsCard } from "@/components/nas-stats-card";
+import { RevenueTrendCard } from "@/components/revenue-trend-card";
 import { NasTypeBreakdownCard } from "@/components/nas-type-breakdown-card";
 import { OverdueAlertCard } from "@/components/overdue-alert-card";
 import { SessionsCard } from "@/components/sessions-card";
@@ -24,6 +25,10 @@ export default function Dashboard() {
         {/* Headline numbers: active subscribers, live sessions, revenue, overdue. */}
         <div className="mb-6">
           <DashboardKpis />
+        </div>
+        {/* Trailing-12-month revenue trend, full width under the KPI strip. */}
+        <div className="mb-6">
+          <RevenueTrendCard />
         </div>
         {/* Surfaces the daily overdue sweep's findings when anything is past due. */}
         <OverdueAlertCard />
