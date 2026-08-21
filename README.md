@@ -150,12 +150,15 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push — see the statu
 - **radius** (separate, slower) — builds FreeRADIUS and smoke-checks the RADIUS → `rlm_sql` →
   Postgres path via `radtest`, plus the scripted lockout tests under `backend/tests/radius`
 
-The nightly workflow (`.github/workflows/nightly.yml`) also runs a **full-stack e2e smoke**
-(`scripts/smoke_e2e.sh`): it brings up every service via `docker compose up`, proves the
-backend auto-migrates, logs an admin in through the compose backend, authenticates a
-subscriber created via the API through FreeRADIUS (and verifies suspending them flips the
-RADIUS verdict to reject), checks the frontend serves pages, then runs the API smoke
-scripts against the compose backend.
+The nightly workflow (`.github/workflows/nightly.yml`) also runs the slow end-to-end
+checks: the **full-stack e2e smoke** (`scripts/smoke_e2e.sh` — brings up every service via
+`docker compose up`, proves the backend auto-migrates, authenticates a subscriber created
+via the API through FreeRADIUS and verifies suspending them flips the verdict to reject,
+checks the frontend serves pages, then runs the API smoke scripts against the compose
+backend), plus the **RADIUS integration suite** (`tests/radius`) and `next build`.
+
+Nightly failures are easy to miss, so the workflow opens a **GitHub issue** (`nightly-failure`
+label) when a run fails and closes it again once a run passes — no external webhook needed.
 
 ## Docs
 

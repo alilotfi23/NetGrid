@@ -2,9 +2,11 @@ name: Nightly
 
 # The fast checks (typecheck, lint, tests) run on every push in ci.yml;
 # this workflow runs the slower checks without blocking push CI: the next
-# build (catches route/page compile errors and dependency drift) and the
-# full-stack e2e smoke test (builds every image and proves the compose stack
-# interoperates end to end).
+# build (catches route/page compile errors and dependency drift), the
+# full-stack e2e smoke test (builds every image and proves the compose
+# stack interoperates end to end), and the RADIUS integration suite. Nightly
+# failures are easy to miss, so the report-failure jobs open a GitHub issue
+# when a run fails and close it again once a run goes green.
 on:
   schedule:
     # Random minute (17) to avoid the top-of-hour surge of scheduled runs.
@@ -60,3 +62,110 @@ jobs:
       - name: Stop the stack
         if: always()
         run: docker compose down -v
+
+  radius:
+    name: RADIUS integration (slow)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start Postgres + FreeRADIUS (compose)
+        run: docker compose up -d --wait postgres freeradius
+
+      # Scripted radtest check proving the full path: RADIUS packet ->
+      # rlm_sql -> postgres -> radpostauth write back. radtest exits non-zero
+      # on Access-Reject, which is the expected outcome for an unknown user.
+      - name: Smoke — auth round-trip through rlm_sql to Postgres
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            OUT="$(docker compose exec -T freeradius radtest baduser badpass 127.0.0.1 0 testing123 2>&1 || true)"
+            if echo "$OUT" | grep -q "Received"; then
+              break
+            fi
+            sleep 2
+          done
+          echo "$OUT"
+          echo "$OUT" | grep -q "Access-Reject"
+          ROWS="$(docker compose exec -T postgres psql -U netgrid -d netgrid -tAc \
+            "SELECT count(*) FROM radpostauth WHERE username='baduser' AND reply='Access-Reject'")"
+          echo "radpostauth rows for baduser: $ROWS"
+          test "$ROWS" -ge 1
+
+      # Scripted radtest checks for the Phase 11 lockout policy — the lockout
+      # lifecycle, successful-auths-don't-count, unknown users, and hostile
+      # User-Names, all asserted against radpostauth via psql.
+      - name: Scripted RADIUS tests (tests/radius)
+        run: |
+          cd backend
+          pip install -e ".[dev]"
+          pytest tests/radius -q
+
+  # Nightly failures are easy to miss, so surface them as an issue. No
+  # Slack/Discord webhook is configured; a GitHub issue is the zero-secret
+  # option. One issue per failure streak: reopened with a comment on each
+  # failed run, closed automatically once a run passes.
+  open-nightly-failure-issue:
+    name: Open/update issue on failure
+    runs-on: ubuntu-latest
+    needs: [frontend-build, full-stack-smoke, radius]
+    if: failure()
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Open or update the nightly failure issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`
+            // Reuse one open issue per failure streak; only create when none
+            // is open, so a long outage produces one issue, not one per night.
+            const list = await github.rest.issues.listForRepo({
+              owner, repo, state: "open",
+              labels: "nightly-failure", per_page: 5,
+            })
+            const issue = list.data.find((i) => /nightly ci failing/i.test(i.title))
+            if (issue) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issue.number,
+                body: `Failed again on ${new Date().toISOString()} — [run](${runUrl})`,
+              })
+            } else {
+              await github.rest.issues.create({
+                owner, repo,
+                title: "Nightly CI failing",
+                body: `The [nightly workflow](${runUrl}) failed on ${new Date().toISOString()}. Check the run log for which job(s) failed.\n\nThis issue closes itself automatically once a nightly run passes.`,
+                labels: ["nightly-failure"],
+              })
+            }
+
+  close-nightly-failure-issue:
+    name: Close issue on green run
+    runs-on: ubuntu-latest
+    needs: [frontend-build, full-stack-smoke, radius]
+    if: success()
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Close the nightly failure issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${owner}/${repo}/actions/runs/${context.runId}`
+            const list = await github.rest.issues.listForRepo({
+              owner, repo, state: "open",
+              labels: "nightly-failure", per_page: 5,
+            })
+            for (const issue of list.data) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issue.number,
+                body: `Resolved — the nightly run [passed](${runUrl}). Closing.`,
+              })
+              await github.rest.issues.update({
+                owner, repo, issue_number: issue.number, state: "closed",
+              })
+            }
