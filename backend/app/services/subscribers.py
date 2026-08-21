@@ -266,7 +266,14 @@ async def update_subscriber(
         subscriber.status = status
         await _set_reject(session, subscriber.username, reject=status != ACTIVE_STATUS)
         changed.append("status")
+    plan_from: str | None = None
+    plan_to: str | None = None
     if plan_id is not _UNSET and plan_id != subscriber.plan_id:
+        if subscriber.plan_id is not None:
+            # plans are decommissioned (is_active=false), never deleted, so the
+            # previous plan still resolves by id for its name
+            old_plan = await plans_service.get_plan_or_404(session, subscriber.plan_id)
+            plan_from = old_plan.name
         if plan_id is None:
             subscriber.plan_id = None
             new_group: str | None = None
@@ -274,6 +281,7 @@ async def update_subscriber(
             new_plan = await plans_service.get_plan_or_404(session, cast(int, plan_id))
             subscriber.plan_id = new_plan.id
             new_group = new_plan.radius_group
+            plan_to = new_plan.name
         # one plan per subscriber: replace any existing membership row
         await session.execute(
             delete(RadUserGroup).where(RadUserGroup.username == subscriber.username)
@@ -288,6 +296,9 @@ async def update_subscriber(
         if "status" in changed:
             metadata_["status_from"] = status_from
             metadata_["status_to"] = subscriber.status
+        if "plan_id" in changed:
+            metadata_["plan_from"] = plan_from
+            metadata_["plan_to"] = plan_to
         await audit_service.record_audit(
             session,
             admin_id=actor_id,

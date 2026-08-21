@@ -376,6 +376,54 @@ async def test_update_plan_clear_removes_membership(session):
     assert await _radusergroup_rows(session, "bob") == []
 
 
+async def test_update_plan_records_plan_names_in_audit(session):
+    actor = await _seed_actor(session)
+    p1 = await _seed_plan(session, "Starter")
+    p2 = await _seed_plan(session, "Pro")
+    subscriber = await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username="bob",
+        full_name="Bob",
+        password="radpass123",
+        plan_id=p1.id,
+    )
+
+    await subscribers_service.update_subscriber(
+        session, subscriber, actor_id=actor.id, plan_id=p2.id
+    )
+
+    history = await subscribers_service.list_subscriber_history(session, subscriber.id)
+    update_event = history[0]
+    assert update_event.action == "update"
+    assert update_event.metadata_["plan_from"] == "Starter"
+    assert update_event.metadata_["plan_to"] == "Pro"
+    assert update_event.metadata_["fields"] == ["plan_id"]
+
+
+async def test_update_plan_clear_records_only_plan_from_in_audit(session):
+    actor = await _seed_actor(session)
+    plan = await _seed_plan(session, "Starter")
+    subscriber = await subscribers_service.create_subscriber(
+        session,
+        actor_id=actor.id,
+        username="bob",
+        full_name="Bob",
+        password="radpass123",
+        plan_id=plan.id,
+    )
+
+    await subscribers_service.update_subscriber(
+        session, subscriber, actor_id=actor.id, plan_id=None
+    )
+
+    history = await subscribers_service.list_subscriber_history(session, subscriber.id)
+    update_event = history[0]
+    assert update_event.metadata_["plan_from"] == "Starter"
+    assert update_event.metadata_["plan_to"] is None
+    assert update_event.metadata_["fields"] == ["plan_id"]
+
+
 async def test_update_plan_unknown_404_leaves_membership_untouched(session):
     actor = await _seed_actor(session)
     plan = await _seed_plan(session, "Starter")

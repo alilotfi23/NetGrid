@@ -52,6 +52,33 @@ describe("RecentActivityView", () => {
     expect(screen.getByText(/sessions/)).toBeTruthy();
   });
 
+  it("shows a metadata summary line when the entry has one", () => {
+    render(
+      <RecentActivityView
+        entries={[
+          entry({
+            action: "update",
+            metadata_: {
+              username: "bob",
+              fields: ["status"],
+              status_from: "active",
+              status_to: "suspended",
+            },
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("status changed active → suspended")).toBeTruthy();
+  });
+
+  it("skips the summary line when the entry has no metadata", () => {
+    render(<RecentActivityView entries={[entry({ metadata_: null })]} />);
+
+    expect(screen.queryByText(/status changed/)).toBeNull();
+    expect(screen.queryByText(/plan moved/)).toBeNull();
+  });
+
   it("links actors to the audit log filtered to their entries", () => {
     render(<RecentActivityView entries={[entry()]} />);
 

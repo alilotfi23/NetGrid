@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import type { AuditLogEntry } from "@/lib/api";
+import { summarizeAuditEntry } from "@/lib/audit-summary";
 import { formatRelativeTime } from "@/lib/format";
 
 /** Resources with a detail page the feed can drill into by id. */
@@ -73,6 +74,7 @@ export function RecentActivityView({ entries }: { entries: AuditLogEntry[] }) {
         <ul className="mt-4 space-y-3">
           {entries.map((entry) => {
             const href = resourceHref(entry.resource, entry.resource_id);
+            const summary = summarizeAuditEntry(entry);
             return (
               <li key={entry.id} className="text-sm">
                 <div className="flex min-w-0 items-center gap-2">
@@ -100,6 +102,14 @@ export function RecentActivityView({ entries }: { entries: AuditLogEntry[] }) {
                     </span>
                   )}
                 </div>
+                {summary && (
+                  <div
+                    className="mt-1 truncate text-xs text-zinc-400 dark:text-zinc-500"
+                    title={summary}
+                  >
+                    {summary}
+                  </div>
+                )}
                 <div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500">
                   {entry.admin_id != null ? (
                     <Link
