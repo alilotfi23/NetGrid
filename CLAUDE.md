@@ -278,8 +278,8 @@ At the start of a session, scan this list top-down and resume at the first unche
   - Document the approach in `/freeradius/README.md`
   - `radtest`/`radclient` scripted checks under `/tests/radius`
 
-- [ ] **Phase 12 — Frontend dashboard**
-  - Next.js + shadcn/ui screens for subscribers, plans, sessions, invoices, NAS devices, admin/role management
+- [x] **Phase 12 — Frontend dashboard**
+  - Next.js + shadcn/ui screens for subscribers, plans, sessions, invoices, NAS devices, admin/role management — all landed (list/detail/new pages per resource, server-rendered pagination on invoices + audit logs, client-side sortable/searchable subscribers table, overdue-invoice alert banner, payments revenue report)
   - TanStack Query/Table wiring against the Phase 4 API conventions
   - Component tests (Vitest + RTL) for forms and client-side sort/filter tables
 
