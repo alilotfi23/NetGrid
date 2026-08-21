@@ -1,19 +1,9 @@
 import Link from "next/link";
 
+import { type DashboardKpis } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
 
-/**
- * The headline numbers for one dashboard tile. `null` means the caller
- * couldn't load that metric (e.g. the viewer lacks the resource's read
- * permission), and the tile renders an em dash instead of a wrong number.
- */
-export type DashboardKpis = {
-  activeSubscribers: number | null;
-  liveSessions: number | null;
-  revenueYearToDate: string | null;
-  overdueCount: number | null;
-  overdueAmount: string | null;
-};
+export type { DashboardKpis };
 
 function Tile({
   href,

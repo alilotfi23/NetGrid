@@ -46,6 +46,23 @@ export type SubscriberStats = {
   by_plan_status: PlanStatusCount[];
 };
 
+/**
+ * The four headline numbers shown on the dashboard KPI strip. A `null`
+ * metric means that resource's stats couldn't be loaded (e.g. the viewer
+ * lacks its read permission) and the tile renders an em dash.
+ */
+export type DashboardKpis = {
+  activeSubscribers: number | null;
+  liveSessions: number | null;
+  revenueYearToDate: string | null;
+  overdueCount: number | null;
+  overdueAmount: string | null;
+};
+
+export type DashboardKpisResult =
+  | { ok: true; kpis: DashboardKpis }
+  | { ok: false; error: string };
+
 export type Plan = {
   id: number;
   name: string;
@@ -797,4 +814,42 @@ export async function loadAuditLogs(filters?: AuditLogListFilters): Promise<Audi
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
+}
+
+/**
+ * Load the four dashboard KPI metrics from the backend in parallel. Each
+ * metric loads independently, so a viewer lacking one resource's read
+ * permission gets nulls for that metric rather than the whole strip failing;
+ * only when every metric fails is the result an error.
+ */
+export async function loadDashboardKpis(): Promise<DashboardKpisResult> {
+  const [subscribers, sessions, report, overdue] = await Promise.all([
+    loadSubscriberStats(),
+    loadSessions(),
+    loadPaymentsReport(new Date().getFullYear()),
+    loadInvoices({ status: "overdue", pageSize: 1 }),
+  ]);
+
+  const errors = [
+    subscribers.ok ? null : subscribers.error,
+    sessions.ok ? null : sessions.error,
+    report.ok ? null : report.error,
+    overdue.ok ? null : overdue.error,
+  ];
+  const firstError = errors.find((err): err is string => Boolean(err));
+
+  if (!subscribers.ok && !sessions.ok && !report.ok && !overdue.ok) {
+    return { ok: false, error: firstError ?? "Dashboard stats unavailable" };
+  }
+
+  return {
+    ok: true,
+    kpis: {
+      activeSubscribers: subscribers.ok ? subscribers.stats.active : null,
+      liveSessions: sessions.ok ? sessions.stats.total : null,
+      revenueYearToDate: report.ok ? report.report.total_revenue : null,
+      overdueCount: overdue.ok ? overdue.total : null,
+      overdueAmount: overdue.ok ? overdue.stats.overdue_amount : null,
+    },
+  };
 }
