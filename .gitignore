@@ -24,3 +24,6 @@ npm-debug.log*
 .DS_Store
 *.log
 .tools/
+
+# freebuff tool workspace
+.freebuff/
