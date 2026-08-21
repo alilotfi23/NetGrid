@@ -55,6 +55,33 @@ jobs:
       - name: Full-stack smoke test
         run: ./scripts/smoke_e2e.sh
 
+      # The viewport audit needs realistic data, so seed the demo dataset
+      # (idempotent) and drive headless Chrome at 375px + 1440px over every
+      # route, asserting nothing overflows its viewport. smoke_e2e.sh left
+      # the whole stack running; ubuntu runners ship Google Chrome, and the
+      # audit script needs no npm dependencies (raw CDP, Node 22 WebSocket).
+      - name: Seed demo data for the viewport audit
+        run: |
+          docker compose cp backend/scripts/seed_dev.py backend:/tmp/seed_dev.py
+          docker compose exec -T -e PYTHONPATH=/app -w /app backend python /tmp/seed_dev.py
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Viewport audit (375px + 1440px, all pages)
+        run: node frontend/scripts/audit-viewports.mjs
+        env:
+          AUDIT_BASE_URL: http://127.0.0.1:3000
+
+      - name: Upload viewport audit screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewport-audit-failures
+          path: /tmp/netgrid-viewport-audit/*.png
+          if-no-files-found: ignore
+
       - name: Dump compose logs on failure
         if: failure()
         run: docker compose logs --tail=200

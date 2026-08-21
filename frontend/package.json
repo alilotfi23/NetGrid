@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "audit:viewports": "node scripts/audit-viewports.mjs"
   },
   "dependencies": {
     "@tanstack/react-table": "^9.1.2",

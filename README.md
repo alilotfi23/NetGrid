@@ -173,7 +173,10 @@ checks: the **full-stack e2e smoke** (`scripts/smoke_e2e.sh` — brings up every
 `docker compose up`, proves the backend auto-migrates, authenticates a subscriber created
 via the API through FreeRADIUS and verifies suspending them flips the verdict to reject,
 checks the frontend serves pages, then runs the API smoke scripts against the compose
-backend), plus the **RADIUS integration suite** (`tests/radius`) and `next build`.
+backend), a **viewport audit** (`node frontend/scripts/audit-viewports.mjs` — seeds the demo
+dataset, then drives headless Chrome over every page at 375px and 1440px asserting nothing
+overflows its viewport, with failure screenshots uploaded as an artifact), plus the
+**RADIUS integration suite** (`tests/radius`) and `next build`.
 
 Nightly failures are easy to miss, so the workflow opens a **GitHub issue** (`nightly-failure`
 label) when a run fails and closes it again once a run passes — no external webhook needed.
