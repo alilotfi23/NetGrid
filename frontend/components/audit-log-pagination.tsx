@@ -68,8 +68,8 @@ export function AuditLogPagination({ page, pageSize, total, adminId, action, res
         Showing {start}–{end} of {total} entries
       </p>
 
-      <div className="flex items-center gap-2">
-        <nav aria-label="Audit log pages" className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <nav aria-label="Audit log pages" className="flex flex-wrap items-center gap-1.5">
           <Link
             href={buildHref(current - 1, pageSize)}
             aria-disabled={current === 1}

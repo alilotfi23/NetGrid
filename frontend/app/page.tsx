@@ -33,13 +33,13 @@ export default function Dashboard() {
         </div>
         {/* Surfaces the daily overdue sweep's findings when anything is past due. */}
         <OverdueAlertCard />
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div className="grid content-start gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 content-start gap-6">
             <StatsCard />
             {/* Latest audit log entries — hidden for roles without audit_logs:read. */}
             <RecentActivityCard />
           </div>
-          <div className="grid content-start gap-6">
+          <div className="grid grid-cols-1 content-start gap-6">
             <NasStatsCard />
             <NasTypeBreakdownCard />
             <SessionsCard />

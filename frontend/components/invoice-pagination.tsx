@@ -68,8 +68,8 @@ export function InvoicePagination({ page, pageSize, total, status, year }: Props
         Showing {start}–{end} of {total} invoices
       </p>
 
-      <div className="flex items-center gap-2">
-        <nav aria-label="Invoice pages" className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <nav aria-label="Invoice pages" className="flex flex-wrap items-center gap-1.5">
           <Link
             href={buildHref(current - 1, pageSize)}
             aria-disabled={current === 1}
