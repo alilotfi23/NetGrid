@@ -9,8 +9,11 @@
  *
  * It checks every route at two viewports — 375px (mobile) and 1440px
  * (desktop) — logging in through the real login form first so the pages
- * render with the authenticated nav and real data. Screenshots of failing
- * pages are written to the screenshot dir for the nightly failure issue.
+ * render with the authenticated nav and real data. Id-bearing detail/edit
+ * pages (e.g. /subscribers/1, /subscribers/1/edit) are discovered live from
+ * the list pages, so the whole route tree is exercised without hardcoding
+ * ids. Screenshots of failing pages are written to the screenshot dir for
+ * the nightly failure issue.
  *
  * Requires:
  *   - Node >= 22 (native fetch + WebSocket)
@@ -59,11 +62,80 @@ const ROUTES = [
   { path: "/nas-devices", settle: 900 },
   { path: "/sessions", settle: 900 },
   { path: "/admins", settle: 900 },
+  { path: "/roles", settle: 900 },
   { path: "/audit-logs", settle: 900 },
+  { path: "/subscribers/new", settle: 900 },
+  { path: "/plans/new", settle: 900 },
+  { path: "/nas-devices/new", settle: 900 },
+  { path: "/admins/new", settle: 900 },
+  { path: "/roles/new", settle: 900 },
 ];
 const ROUTES_FILTERED = process.env.AUDIT_ROUTES
   ? ROUTES.filter((r) => process.env.AUDIT_ROUTES.split(",").map((s) => s.trim()).includes(r.path))
   : ROUTES;
+
+/**
+ * Dynamic (id-bearing) routes are discovered live: right after a list page
+ * is audited, the first link matching `selector` is read and `transform`
+ * derives the target path, so the audit exercises real detail/edit pages
+ * without hardcoding ids. Skipped silently when a page has no rows.
+ */
+// Selectors are scoped to the list <table> so header action buttons (e.g.
+// the "New subscriber" link at /subscribers/new) don't get mistaken for
+// row links. `marker` is a page expression that must be truthy after render,
+// so a discovered link that 404s (or renders an empty shell) fails instead
+// of passing silently.
+const DISCOVERY = [
+  {
+    after: "/subscribers",
+    selector: `table a[href^="/subscribers/"]`,
+    transform: (h) => h,
+    settle: 1200,
+    marker: `!!document.querySelector('table')`,
+  },
+  {
+    after: "/subscribers",
+    selector: `table a[href^="/subscribers/"]`,
+    transform: (h) => `${h}/edit`,
+    settle: 1200,
+    marker: `document.body.innerText.includes('Edit subscriber')`,
+  },
+  {
+    after: "/plans",
+    selector: `table a[href^="/plans/"]`,
+    transform: (h) => h,
+    settle: 1200,
+    marker: `document.body.innerText.includes('Edit ')`,
+  },
+  {
+    after: "/invoices",
+    selector: `table a[href^="/invoices/"]`,
+    transform: (h) => h,
+    settle: 1200,
+    marker: `document.body.innerText.includes('Invoice #')`,
+  },
+  {
+    after: "/nas-devices",
+    selector: `table a[href^="/nas-devices/"]`,
+    transform: (h) => h,
+    settle: 1200,
+    marker: `document.body.innerText.includes('Edit ')`,
+  },
+  {
+    after: "/admins",
+    selector: `table a[href^="/admins/"]`,
+    transform: (h) => h,
+    settle: 1200,
+    marker: `document.body.innerText.includes('Edit ')`,
+  },
+  {
+    after: "/roles",
+    selector: `table a[href^="/roles/"]`,
+    transform: (h) => h,
+    settle: 1200,
+    marker: `document.body.innerText.includes('Edit ')`,
+  },
+];
 
 const HEIGHT = 900;
 
@@ -283,6 +355,51 @@ async function auditRoute(send, route) {
   return evalJs(send, AUDIT_FN);
 }
 
+// Audit one route at one viewport: record the outcome, write a screenshot on
+// failure, and return whether the page is clean. Failed renders are recorded
+// but don't abort the walk (the next page may be fine and still worth seeing).
+let checked = 0;
+async function checkRoute(send, vw, route) {
+  let result;
+  try {
+    result = await auditRoute(send, route);
+    if (route.marker && !(await evalJs(send, route.marker))) {
+      throw new Error("page rendered without expected content");
+    }
+  } catch (err) {
+    const entry = { vw, path: route.path, error: err.message };
+    failures.push(entry);
+    const file = path.join(SCREENSHOT_DIR, `${vw}-${route.path.replaceAll("/", "_")}.png`);
+    try {
+      await saveScreenshot(send, file);
+      entry.screenshot = file;
+    } catch {
+      /* best effort */
+    }
+    console.log(`view ${vw}px  ${route.path}  FAIL (${err.message})`);
+    checked += 1;
+    return false;
+  }
+  const ok = !result.pageOverflow && result.offenders.length === 0;
+  if (!ok) {
+    const entry = { vw, path: route.path, result };
+    failures.push(entry);
+    const file = path.join(SCREENSHOT_DIR, `${vw}-${route.path.replaceAll("/", "_")}.png`);
+    try {
+      await saveScreenshot(send, file);
+      entry.screenshot = file;
+    } catch {
+      /* best effort */
+    }
+  }
+  results.push({ vw, path: route.path, ok });
+  console.log(
+    `view ${vw}px  ${route.path}  ${ok ? "OK" : `FAIL (${result.offenders.length} offender(s))`}`
+  );
+  checked += 1;
+  return ok;
+}
+
 async function saveScreenshot(send, file) {
   const shot = await send("Page.captureScreenshot", { format: "png" });
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -367,39 +484,28 @@ try {
       await login(send);
     }
 
-    for (const route of ROUTES_FILTERED) {
-      let result;
-      try {
-        result = await auditRoute(send, route);
-      } catch (err) {
-        const entry = { vw, path: route.path, error: err.message };
-        failures.push(entry);
-        const file = path.join(SCREENSHOT_DIR, `${vw}-${route.path.replaceAll("/", "_")}.png`);
-        try {
-          await saveScreenshot(send, file);
-          entry.screenshot = file;
-        } catch {
-          /* best effort */
-        }
-        console.log(`view ${vw}px  ${route.path}  FAIL (${err.message})`);
-        continue;
-      }
-      const ok = !result.pageOverflow && result.offenders.length === 0;
-      if (!ok) {
-        const entry = { vw, path: route.path, result };
-        failures.push(entry);
-        const file = path.join(SCREENSHOT_DIR, `${vw}-${route.path.replaceAll("/", "_")}.png`);
-        try {
-          await saveScreenshot(send, file);
-          entry.screenshot = file;
-        } catch {
-          /* best effort */
+    // Queue-based walk: static routes first, then any detail/edit routes
+    // discovered from the list pages, so id-bearing pages get audited too.
+    const visited = new Set();
+    const queue = ROUTES_FILTERED.map((r) => ({ ...r }));
+    while (queue.length > 0) {
+      const route = queue.shift();
+      if (visited.has(route.path)) continue;
+      visited.add(route.path);
+      const ok = await checkRoute(send, vw, route);
+      if (!ok) continue; // don't discover children from a page that failed
+      for (const d of DISCOVERY) {
+        if (d.after !== route.path) continue;
+        const href = await evalJs(
+          send,
+          `(() => { const a = document.querySelector(${JSON.stringify(d.selector)}); return a ? a.getAttribute('href') : null; })()`
+        );
+        if (!href) continue;
+        const target = d.transform(href);
+        if (!visited.has(target) && !queue.some((q) => q.path === target)) {
+          queue.push({ path: target, settle: d.settle });
         }
       }
-      results.push({ vw, path: route.path, ok });
-      console.log(
-        `view ${vw}px  ${route.path}  ${ok ? "OK" : `FAIL (${result.offenders.length} offender(s))`}`
-      );
     }
   }
 
@@ -442,5 +548,5 @@ if (failures.length > 0) {
   process.exit(1);
 }
 console.log(
-  `PASS — ${VIEWPORTS.length} viewport(s) × ${ROUTES_FILTERED.length + 1} page(s) clean, detector verified`
+  `PASS — ${VIEWPORTS.length} viewport(s) × ${checked} page check(s) clean, detector verified`
 );
