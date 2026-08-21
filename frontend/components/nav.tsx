@@ -20,7 +20,7 @@ export function Nav() {
         <Link href="/" className="text-lg font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           NetGrid
         </Link>
-        <nav className="flex items-center gap-5 text-sm">
+        <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
           {links.map(({ href, label }) => (
             <Link
               key={href}
