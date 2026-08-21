@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 
+/**
+ * Refresh cadence for the live dashboard cards. Shared by every polling
+ * card so they all stay in sync and one number tunes the whole page.
+ */
+export const DASHBOARD_REFRESH_MS = 30_000;
+
 /** How often the hook re-renders so staleness flips and the notice advances. */
 const TICK_MS = 15_000;
 

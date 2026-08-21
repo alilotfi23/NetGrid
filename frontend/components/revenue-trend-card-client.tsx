@@ -1,11 +1,9 @@
 "use client";
 
 import type { RevenueTrendResult } from "@/lib/api";
-import { useLiveData } from "@/lib/use-live-data";
+import { DASHBOARD_REFRESH_MS, useLiveData } from "@/lib/use-live-data";
 import { RevenueTrendView } from "./revenue-trend-view";
 import { StaleNotice } from "./stale-notice";
-
-const REFRESH_MS = 30_000;
 
 /**
  * Client half of the revenue-trend card: starts from the server-rendered
@@ -18,7 +16,7 @@ export function RevenueTrendCardClient({ initial }: { initial: RevenueTrendResul
   const { data: result, stale, lastUpdatedAt } = useLiveData<RevenueTrendResult>(
     "/api/dashboard/revenue-trend",
     initial,
-    REFRESH_MS,
+    DASHBOARD_REFRESH_MS,
   );
 
   return (

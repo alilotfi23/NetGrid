@@ -1,11 +1,9 @@
 "use client";
 
 import type { DashboardKpisResult } from "@/lib/api";
-import { useLiveData } from "@/lib/use-live-data";
+import { DASHBOARD_REFRESH_MS, useLiveData } from "@/lib/use-live-data";
 import { DashboardKpisView } from "./dashboard-kpis-view";
 import { StaleNotice } from "./stale-notice";
-
-const REFRESH_MS = 30_000;
 
 /**
  * Client half of the dashboard KPI strip: starts from the server-rendered
@@ -18,7 +16,7 @@ export function DashboardKpisClient({ initial }: { initial: DashboardKpisResult 
   const { data: result, stale, lastUpdatedAt } = useLiveData<DashboardKpisResult>(
     "/api/dashboard/kpis",
     initial,
-    REFRESH_MS,
+    DASHBOARD_REFRESH_MS,
   );
 
   return (

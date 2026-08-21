@@ -1,11 +1,9 @@
 "use client";
 
 import type { AuditLogsResult } from "@/lib/api";
-import { useLiveData } from "@/lib/use-live-data";
+import { DASHBOARD_REFRESH_MS, useLiveData } from "@/lib/use-live-data";
 import { RecentActivityView } from "./recent-activity-view";
 import { StaleNotice } from "./stale-notice";
-
-const REFRESH_MS = 30_000;
 
 /**
  * Client half of the recent-activity feed: starts from the server-rendered
@@ -19,7 +17,7 @@ export function RecentActivityClient({ initial }: { initial: AuditLogsResult }) 
   const { data: result, stale, lastUpdatedAt } = useLiveData<AuditLogsResult>(
     "/api/dashboard/activity",
     initial,
-    REFRESH_MS,
+    DASHBOARD_REFRESH_MS,
   );
 
   if (!result.ok) {

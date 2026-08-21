@@ -1,11 +1,9 @@
 "use client";
 
 import type { NasDevicesResult } from "@/lib/api";
-import { useLiveData } from "@/lib/use-live-data";
+import { DASHBOARD_REFRESH_MS, useLiveData } from "@/lib/use-live-data";
 import { NasStatsCardView } from "./nas-stats-card-view";
 import { StaleNotice } from "./stale-notice";
-
-const REFRESH_MS = 30_000;
 
 /**
  * Client half of the NAS summary card: starts from the server-rendered
@@ -18,7 +16,7 @@ export function NasStatsCardClient({ initial }: { initial: NasDevicesResult }) {
   const { data: result, stale, lastUpdatedAt } = useLiveData<NasDevicesResult>(
     "/api/dashboard/nas-stats",
     initial,
-    REFRESH_MS,
+    DASHBOARD_REFRESH_MS,
   );
 
   return (

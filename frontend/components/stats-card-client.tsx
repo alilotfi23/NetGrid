@@ -1,11 +1,9 @@
 "use client";
 
 import type { StatsResult } from "@/lib/api";
-import { useLiveData } from "@/lib/use-live-data";
+import { DASHBOARD_REFRESH_MS, useLiveData } from "@/lib/use-live-data";
 import { StaleNotice } from "./stale-notice";
 import { StatsCardView } from "./stats-card-view";
-
-const REFRESH_MS = 30_000;
 
 /**
  * Client half of the subscriber-stats card: starts from the server-rendered
@@ -18,7 +16,7 @@ export function StatsCardClient({ initial }: { initial: StatsResult }) {
   const { data: result, stale, lastUpdatedAt } = useLiveData<StatsResult>(
     "/api/dashboard/subscriber-stats",
     initial,
-    REFRESH_MS,
+    DASHBOARD_REFRESH_MS,
   );
 
   return (

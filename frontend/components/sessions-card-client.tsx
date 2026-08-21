@@ -1,11 +1,9 @@
 "use client";
 
 import type { SessionsResult } from "@/lib/api";
-import { useLiveData } from "@/lib/use-live-data";
+import { DASHBOARD_REFRESH_MS, useLiveData } from "@/lib/use-live-data";
 import { SessionsCardView } from "./sessions-card-view";
 import { StaleNotice } from "./stale-notice";
-
-const REFRESH_MS = 30_000;
 
 /**
  * Client half of the live-sessions card: starts from the server-rendered
@@ -18,7 +16,7 @@ export function SessionsCardClient({ initial }: { initial: SessionsResult }) {
   const { data: result, stale, lastUpdatedAt } = useLiveData<SessionsResult>(
     "/api/dashboard/sessions",
     initial,
-    REFRESH_MS,
+    DASHBOARD_REFRESH_MS,
   );
 
   return (

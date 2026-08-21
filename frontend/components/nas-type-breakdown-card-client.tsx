@@ -1,11 +1,9 @@
 "use client";
 
 import type { NasDevicesResult } from "@/lib/api";
-import { useLiveData } from "@/lib/use-live-data";
+import { DASHBOARD_REFRESH_MS, useLiveData } from "@/lib/use-live-data";
 import { NasTypeBreakdownView } from "./nas-type-breakdown-view";
 import { StaleNotice } from "./stale-notice";
-
-const REFRESH_MS = 30_000;
 
 /**
  * Client half of the by-NAS-type card: starts from the server-rendered
@@ -18,7 +16,7 @@ export function NasTypeBreakdownCardClient({ initial }: { initial: NasDevicesRes
   const { data: result, stale, lastUpdatedAt } = useLiveData<NasDevicesResult>(
     "/api/dashboard/nas-stats",
     initial,
-    REFRESH_MS,
+    DASHBOARD_REFRESH_MS,
   );
 
   return (
