@@ -81,6 +81,21 @@ describe("StatsCardClient", () => {
     expect(screen.queryByText("Subscriber stats unavailable")).toBeNull();
   });
 
+  it("shows a stale caption once polls stop succeeding", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response));
+
+    render(<StatsCardClient initial={INITIAL} />);
+    expect(screen.queryByText(/Updated/)).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(90_000);
+    });
+    await act(async () => {});
+
+    expect(screen.getByText(/Updated/)).toBeTruthy();
+  });
+
   it("renders the error card when the initial load failed", () => {
     vi.stubGlobal("fetch", vi.fn());
     render(<StatsCardClient initial={{ ok: false, error: "No active session — log in first" }} />);

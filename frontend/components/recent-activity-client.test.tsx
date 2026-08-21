@@ -105,6 +105,21 @@ describe("RecentActivityClient", () => {
     expect(fetchMock.mock.calls.length).toBe(callsAtUnmount);
   });
 
+  it("shows a stale caption once polls stop succeeding", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response));
+
+    render(<RecentActivityClient initial={INITIAL} />);
+    expect(screen.queryByText(/Updated/)).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(90_000);
+    });
+    await act(async () => {});
+
+    expect(screen.getByText(/Updated/)).toBeTruthy();
+  });
+
   it("renders nothing when the initial load failed, but appears once a poll succeeds", async () => {
     vi.useFakeTimers();
     const fetchMock = vi
