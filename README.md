@@ -109,6 +109,24 @@ uvicorn app.main:app --reload
 Settings are read from `backend/.env` (or environment variables) — copy `.env.example`
 there and adjust `DATABASE_URL`/`REDIS_URL` for host-side dev.
 
+### Demo data
+
+`backend/scripts/seed_dev.py` seeds a realistic demo dataset (plans, NAS
+devices, subscribers, 12 months of invoices + payments, overdue flips, live
+sessions) so the dashboard is fully populated on a fresh database:
+
+```bash
+cd backend
+python scripts/seed_dev.py
+```
+
+It is idempotent — sections that already have data are skipped, so re-runs
+are safe — and writes through the same services the API uses, so all
+coupled FreeRADIUS rows and audit entries are recorded exactly as real
+admin actions would be. It needs the FreeRADIUS schema tables (the compose
+postgres applies them at init on a fresh volume) and a migrated database
+with the seeded `superadmin` admin (`alembic upgrade head`).
+
 ### Tests and quality gates
 
 ```bash

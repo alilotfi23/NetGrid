@@ -93,15 +93,18 @@ class Nas(Base):
 class RadAcct(Base):
     """Read-only mapping of FreeRADIUS's radacct table (session accounting).
 
-    Only the columns the dashboard's live-session views need are mapped;
-    writes are never performed against this table. Inet columns surface as
-    ipaddress objects — cast to str at the service layer.
+    Only the columns the dashboard's live-session views need are mapped,
+    plus ``acctuniqueid`` (NOT NULL in the FreeRADIUS schema, needed by the
+    dev seed tooling that inserts demo rows). Writes are never performed by
+    the app against this table. Inet columns surface as ipaddress objects —
+    cast to str at the service layer.
     """
 
     __tablename__ = "radacct"
 
     id: Mapped[int] = mapped_column("radacctid", BigInteger, primary_key=True)
     acctsessionid: Mapped[str | None] = mapped_column(Text)
+    acctuniqueid: Mapped[str | None] = mapped_column(Text, unique=True)
     username: Mapped[str | None] = mapped_column(Text)
     nasipaddress: Mapped[str | None] = mapped_column(INET)
     acctstarttime: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
