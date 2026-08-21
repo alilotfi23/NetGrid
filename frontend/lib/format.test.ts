@@ -7,6 +7,7 @@ import {
   formatDay,
   formatDuration,
   formatMonth,
+  formatRelativeTime,
   permissionLabel,
 } from "./format";
 
@@ -98,6 +99,30 @@ describe("formatMonth", () => {
 
   it("passes through non-bucket strings", () => {
     expect(formatMonth("2026")).toBe("2026");
+  });
+});
+
+describe("formatRelativeTime", () => {
+  it("formats null as a dash", () => {
+    expect(formatRelativeTime(null)).toBe("—");
+  });
+
+  it("buckets recent times into human units", () => {
+    const now = new Date("2026-08-21T12:00:00Z");
+    expect(formatRelativeTime("2026-08-21T11:59:30Z", now)).toBe("just now");
+    expect(formatRelativeTime("2026-08-21T11:55:00Z", now)).toBe("5m ago");
+    expect(formatRelativeTime("2026-08-21T09:00:00Z", now)).toBe("3h ago");
+    expect(formatRelativeTime("2026-08-18T12:00:00Z", now)).toBe("3d ago");
+  });
+
+  it("falls back to a readable day for entries older than a month", () => {
+    const now = new Date("2026-08-21T12:00:00Z");
+    const out = formatRelativeTime("2026-06-01T12:00:00Z", now);
+    expect(out).toContain("2026");
+  });
+
+  it("handles garbage input defensively", () => {
+    expect(formatRelativeTime("not-a-date")).toBe("not-a-date");
   });
 });
 

@@ -1,6 +1,7 @@
 import { Nav } from "@/components/nav";
 import { DashboardKpis } from "@/components/dashboard-kpis";
 import { NasStatsCard } from "@/components/nas-stats-card";
+import { RecentActivityCard } from "@/components/recent-activity-card";
 import { RevenueTrendCard } from "@/components/revenue-trend-card";
 import { NasTypeBreakdownCard } from "@/components/nas-type-breakdown-card";
 import { OverdueAlertCard } from "@/components/overdue-alert-card";
@@ -33,7 +34,11 @@ export default function Dashboard() {
         {/* Surfaces the daily overdue sweep's findings when anything is past due. */}
         <OverdueAlertCard />
         <div className="grid gap-6 lg:grid-cols-2">
-          <StatsCard />
+          <div className="grid content-start gap-6">
+            <StatsCard />
+            {/* Latest audit log entries — hidden for roles without audit_logs:read. */}
+            <RecentActivityCard />
+          </div>
           <div className="grid content-start gap-6">
             <NasStatsCard />
             <NasTypeBreakdownCard />

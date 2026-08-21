@@ -69,6 +69,29 @@ export function permissionLabel(code: string): string {
   return colon >= 0 ? code.slice(colon + 1) : code;
 }
 
+/**
+ * Relative time for the activity feed, e.g. "just now", "5m ago", "2h ago",
+ * "3d ago". Falls back to a readable day for anything older than a month and
+ * to the raw string for garbage input.
+ */
+export function formatRelativeTime(
+  iso: string | null | undefined,
+  now: Date = new Date(),
+): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const seconds = Math.max(0, Math.floor((now.getTime() - date.getTime()) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return formatDay(iso);
+}
+
 /** Format a "YYYY-MM" report bucket as a readable month, e.g. "Aug 2026". */
 export function formatMonth(month: string | null | undefined): string {
   if (!month) return "—";
