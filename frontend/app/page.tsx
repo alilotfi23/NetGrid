@@ -1,4 +1,5 @@
 import { Nav } from "@/components/nav";
+import { DashboardKpis } from "@/components/dashboard-kpis";
 import { NasStatsCard } from "@/components/nas-stats-card";
 import { NasTypeBreakdownCard } from "@/components/nas-type-breakdown-card";
 import { OverdueAlertCard } from "@/components/overdue-alert-card";
@@ -20,6 +21,10 @@ export default function Dashboard() {
             Dashboard
           </h1>
         </header>
+        {/* Headline numbers: active subscribers, live sessions, revenue, overdue. */}
+        <div className="mb-6">
+          <DashboardKpis />
+        </div>
         {/* Surfaces the daily overdue sweep's findings when anything is past due. */}
         <OverdueAlertCard />
         <div className="grid gap-6 lg:grid-cols-2">
