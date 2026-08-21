@@ -7,6 +7,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -15,7 +16,10 @@ import {
 import { formatCurrency, formatMonth } from "@/lib/format";
 import type { RevenueTrendPoint } from "@/lib/revenue-trend";
 
-const CHART_WIDTH = 640;
+// The chart fills its card when the card is wider than this, and stays this
+// wide (with the wrapper scrolling) on narrow screens so the twelve month
+// labels and bars never get squeezed into illegibility.
+const MIN_CHART_WIDTH = 640;
 const CHART_HEIGHT = 200;
 const FILL = "#6366f1"; // indigo-500
 const AXIS_TICK_FILL = "#a1a1aa";
@@ -130,12 +134,13 @@ export function RevenueTrendView({
       </div>
 
       <div role="img" aria-label="Monthly revenue" className="mt-4 overflow-x-auto">
-        <BarChart
-          width={CHART_WIDTH}
-          height={CHART_HEIGHT}
-          data={chartData}
-          margin={{ top: 8, right: 8, bottom: 0, left: -8 }}
-        >
+        <div style={{ minWidth: MIN_CHART_WIDTH }}>
+          <ResponsiveContainer
+            width="100%"
+            height={CHART_HEIGHT}
+            initialDimension={{ width: MIN_CHART_WIDTH, height: CHART_HEIGHT }}
+          >
+            <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -8 }}>
           <CartesianGrid stroke={GRID_STROKE} strokeOpacity={0.5} vertical={false} />
           <XAxis
             dataKey="month"
@@ -174,8 +179,10 @@ export function RevenueTrendView({
             {chartData.map((entry) => (
               <Cell key={entry.month} fill={FILL} />
             ))}
-          </Bar>
-        </BarChart>
+            </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </section>
   );
