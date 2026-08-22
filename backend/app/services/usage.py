@@ -19,12 +19,15 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import get_redis
+from app.models.plan import Plan
 from app.models.radius import RadAcct
+from app.models.subscriber import Subscriber
 
 # Mirrors PERM_CACHE_TTL_SECONDS: quota numbers are never stale for longer
 # than a short window, and the dashboard's live-polling cards refresh within it.
@@ -206,3 +209,105 @@ async def clear_usage_cache() -> None:
         pass  # keys expire on their own
     finally:
         await redis.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Data-cap report (usage vs plan quota)
+# ---------------------------------------------------------------------------
+
+_GB = 1024**3
+
+
+def octets_to_gb(octets: int) -> float:
+    """GiB, rounded to two decimals (1 GiB = 1024^3 bytes)."""
+    return round(octets / _GB, 2)
+
+
+@dataclass(frozen=True)
+class UsageReportRow:
+    """One plan-assigned subscriber's consumption vs its plan quota."""
+
+    subscriber_id: int
+    username: str
+    full_name: str
+    plan_id: int
+    plan_name: str
+    quota_gb: int | None
+    window_start: datetime
+    window_end: datetime
+    input_octets: int
+    output_octets: int
+    session_count: int
+
+    @property
+    def total_octets(self) -> int:
+        return self.input_octets + self.output_octets
+
+    @property
+    def total_gb(self) -> float:
+        return octets_to_gb(self.total_octets)
+
+    @property
+    def pct_used(self) -> float | None:
+        """Percent of the plan quota consumed; None when the plan has no cap."""
+        if not self.quota_gb:
+            return None
+        return round(self.total_gb / self.quota_gb * 100, 1)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "subscriber_id": self.subscriber_id,
+            "username": self.username,
+            "full_name": self.full_name,
+            "plan_id": self.plan_id,
+            "plan_name": self.plan_name,
+            "quota_gb": self.quota_gb,
+            "window_start": self.window_start.isoformat(),
+            "window_end": self.window_end.isoformat(),
+            "input_octets": self.input_octets,
+            "output_octets": self.output_octets,
+            "total_octets": self.total_octets,
+            "total_gb": self.total_gb,
+            "session_count": self.session_count,
+            "pct_used": self.pct_used,
+        }
+
+
+async def get_usage_report(session: AsyncSession) -> list[UsageReportRow]:
+    """Current-month consumption vs plan quota for every plan-assigned subscriber.
+
+    Subscribers without any session rows in the window appear with zero usage
+    (their quota still shows), so the operator sees the whole book, not just
+    who has traffic. Ordered by username. Unplanned subscribers are excluded
+    — they have no cap to track against.
+    """
+    result = await session.execute(
+        select(Subscriber, Plan.name, Plan.quota_gb)
+        .join(Plan, Plan.id == Subscriber.plan_id)
+        .order_by(Subscriber.username)
+    )
+    pairs = result.all()
+    if not pairs:
+        return []
+    usernames = [sub.username for sub, _, _ in pairs]
+    usage_by_username = {u.username: u for u in await summarize_usage(session, usernames=usernames)}
+    start, end = month_window()
+    rows = []
+    for sub, plan_name, quota_gb in pairs:
+        usage = usage_by_username.get(sub.username)
+        rows.append(
+            UsageReportRow(
+                subscriber_id=sub.id,
+                username=sub.username,
+                full_name=sub.full_name,
+                plan_id=cast(int, sub.plan_id),
+                plan_name=plan_name,
+                quota_gb=quota_gb,
+                window_start=start,
+                window_end=end,
+                input_octets=usage.input_octets if usage else 0,
+                output_octets=usage.output_octets if usage else 0,
+                session_count=usage.session_count if usage else 0,
+            )
+        )
+    return rows

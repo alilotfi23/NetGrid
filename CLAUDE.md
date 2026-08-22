@@ -70,6 +70,7 @@ Applies to **admin users only** — subscriber auth is handled entirely by FreeR
   - `invoices:read`, `invoices:write`
   - `nas_devices:read`, `nas_devices:write`
   - `sessions:read`, `sessions:disconnect` (CoA)
+  - `usage:read` (view subscriber data-cap usage: current-month radacct consumption vs plan quota)
   - `admins:read` (list admins and their role assignments)
   - `admins:manage` (create/edit other admins and role assignments — restrict to `super_admin`)
   - `roles:read` (view roles and the permission catalog)
@@ -288,6 +289,12 @@ At the start of a session, scan this list top-down and resume at the first unche
 - [x] **Phase 13 (cont.) — hardening pass**
   - Revisit the remaining Medium/Low items in Prioritized Recommendations (audit log wiring if not already done, README.md, indexing pass on `radacct`) — all landed (audit log read API + viewer, README CI badge/section, `radacct` hardening indexes in the radius initdb scripts)
   - End-to-end smoke test across the full stack via `docker compose up` — `scripts/smoke_e2e.sh`, run nightly in `.github/workflows/nightly.yml` (it builds every image, so it stays off the push path); the backend container now runs `alembic upgrade head` on startup, so a fresh `docker compose up` is fully provisioned. Nightly also runs a viewport regression audit (`frontend/scripts/audit-viewports.mjs`) that seeds the demo dataset and asserts every page fits at 375px and 1440px in headless Chrome, that scrollable tables/charts scroll inside their cards without moving the page (scroll-position stability), and — via a dashboard pixel-diff baseline persisted as a CI artifact between nightly runs — that paint/layout drift fails the audit (failure screenshots uploaded as an artifact)
+
+### Ongoing milestone — data-cap lifecycle (post-Phase-13)
+
+- [x] **Usage aggregation service** — `app/services/usage.py`: current-month per-subscriber octet totals from `radacct` (attributed by session start), best-effort 60s Redis cache, worker-namespaced keys, `clear_usage_cache()`. 15 unit tests.
+- [x] **Usage report API + dashboard card** — `GET /api/v1/usage` (RBAC `usage:read`, added via migration `a1b2c3d4e5f6`): per plan-assigned subscriber, consumed GB vs `quota_gb` with `pct_used`, plus rollup stats. Dashboard `Data cap usage` card (progress bars, over-quota flagging) polling on the shared 30s cadence.
+- [ ] **Over-quota enforcement job** (next) — APScheduler job polling the usage report and disconnecting breaching sessions via the existing pyrad CoA path, with `quota_enforced` audit events.
 
 ## Prioritized Recommendations (from architecture review)
 

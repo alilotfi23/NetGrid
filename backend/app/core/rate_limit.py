@@ -62,6 +62,8 @@ LIMITS = {
     "sessions_disconnect": "10/minute",
     # Phase 12 audit log viewer: read-only.
     "audit_read": "60/minute",
+    # Data-cap usage report: read-only.
+    "usage_read": "60/minute",
 }
 
 

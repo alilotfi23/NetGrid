@@ -11,6 +11,7 @@ from .roles import permissions_router
 from .roles import router as roles_router
 from .sessions import router as sessions_router
 from .subscribers import router as subscribers_router
+from .usage import router as usage_router
 
 api_router = APIRouter()
 api_router.include_router(health_router, tags=["health"])
@@ -24,3 +25,4 @@ api_router.include_router(invoices_router)
 api_router.include_router(nas_devices_router)
 api_router.include_router(subscribers_router)
 api_router.include_router(sessions_router)
+api_router.include_router(usage_router)

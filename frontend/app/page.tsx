@@ -7,6 +7,7 @@ import { NasTypeBreakdownCard } from "@/components/nas-type-breakdown-card";
 import { OverdueAlertCard } from "@/components/overdue-alert-card";
 import { SessionsCard } from "@/components/sessions-card";
 import { StatsCard } from "@/components/stats-card";
+import { UsageCard } from "@/components/usage-card";
 
 // The dashboard shows live counts fetched with a runtime token — never
 // prerender it at build time (where the token is absent and the fetch would
@@ -36,6 +37,8 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="grid grid-cols-1 content-start gap-6">
             <StatsCard />
+            {/* Consumed vs plan quota — hidden for roles without usage:read. */}
+            <UsageCard />
             {/* Latest audit log entries — hidden for roles without audit_logs:read. */}
             <RecentActivityCard />
           </div>

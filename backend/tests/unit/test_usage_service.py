@@ -1,13 +1,16 @@
 """Unit tests for the usage-aggregation service (radacct -> per-subscriber octets)."""
 
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import update
 
 from app.core.redis import get_redis
+from app.models.plan import Plan
 from app.models.radius import RadAcct
+from app.models.subscriber import Subscriber
 from app.services import usage as usage_service
-from app.services.usage import month_window
+from app.services.usage import month_window, octets_to_gb
 
 # Fixed reference so window math is deterministic regardless of when the suite runs.
 WINDOW_START, WINDOW_END = month_window(datetime(2026, 8, 15, 12, 0, 0, tzinfo=UTC))
@@ -232,6 +235,92 @@ async def test_cache_best_effort_when_redis_unavailable(session, monkeypatch):
         session, "bob", start=WINDOW_START, end=WINDOW_END
     )
     assert usage.total_octets == 10  # DB fallback despite the outage
+
+
+# --------------------------------------------------------------------------- usage report
+
+
+async def _seed_plan(session, name="Starter", quota_gb=100) -> Plan:
+    plan = Plan(
+        name=name,
+        radius_group=f"grp-{name.lower()}",
+        price=Decimal("9.99"),
+        duration_days=30,
+        bandwidth_down_mbps=100,
+        bandwidth_up_mbps=10,
+        quota_gb=quota_gb,
+    )
+    session.add(plan)
+    return plan
+
+
+async def _seed_subscriber(session, plan: Plan, username: str) -> None:
+    # assign via the relationship so the FK resolves at flush (plan.id is
+    # None until then)
+    session.add(
+        Subscriber(
+            username=username,
+            full_name=f"{username} Smith",
+            status="active",
+            plan=plan,
+        )
+    )
+
+
+async def test_octets_to_gb_rounds_to_two_decimals():
+    assert octets_to_gb(1024**3) == 1.0
+    assert octets_to_gb(512 * 1024**2) == 0.5
+    assert octets_to_gb(1) == 0.0
+    assert octets_to_gb(1500 * 1024**3) == 1500.0
+
+
+async def test_usage_report_zero_usage_for_silent_subscriber(session):
+    plan = await _seed_plan(session)
+    await _seed_subscriber(session, plan, "quiet")
+    await session.commit()
+
+    (row,) = await usage_service.get_usage_report(session)
+    assert row.username == "quiet"
+    assert row.total_octets == 0
+    assert row.total_gb == 0.0
+    assert row.pct_used == 0
+    assert row.session_count == 0
+    assert row.quota_gb == 100
+
+
+async def test_usage_report_matches_aggregation_and_computes_pct(session):
+    plan = await _seed_plan(session, quota_gb=10)
+    await _seed_subscriber(session, plan, "bob")
+    await _seed_session(session, username="bob", in_octets=1024**3, out_octets=1024**3)  # 2 GiB
+    await session.commit()
+
+    (row,) = await usage_service.get_usage_report(session)
+    assert row.total_gb == 2.0
+    assert row.pct_used == 20.0  # 2 / 10 quota
+    assert row.plan_name == "Starter"
+    assert row.session_count == 1
+
+
+async def test_usage_report_pct_none_when_plan_has_no_quota(session):
+    plan = await _seed_plan(session, name="Unlimited", quota_gb=None)
+    await _seed_subscriber(session, plan, "bob")
+    await _seed_session(session, username="bob", in_octets=1024**3, out_octets=0)
+    await session.commit()
+
+    (row,) = await usage_service.get_usage_report(session)
+    assert row.quota_gb is None
+    assert row.pct_used is None
+    assert row.total_gb == 1.0
+
+
+async def test_usage_report_excludes_unplanned_subscribers(session):
+    plan = await _seed_plan(session)
+    await _seed_subscriber(session, plan, "has-plan")
+    session.add(Subscriber(username="no-plan", full_name="No Plan", status="active"))
+    await session.commit()
+
+    rows = await usage_service.get_usage_report(session)
+    assert [r.username for r in rows] == ["has-plan"]
 
 
 async def test_clear_usage_cache_removes_keys(session):

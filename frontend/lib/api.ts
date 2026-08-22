@@ -69,6 +69,45 @@ export type RevenueTrendResult =
   | { ok: true; points: RevenueTrendPoint[] }
   | { ok: false; error: string };
 
+/** One plan-assigned subscriber's current-month consumption vs quota. */
+export type UsageRow = {
+  subscriber_id: number;
+  username: string;
+  full_name: string;
+  plan_id: number;
+  plan_name: string;
+  quota_gb: number | null;
+  window_start: string;
+  window_end: string;
+  input_octets: number;
+  output_octets: number;
+  total_octets: number;
+  total_gb: number;
+  session_count: number;
+  pct_used: number | null;
+};
+
+export type UsageReportData = {
+  items: UsageRow[];
+  total: number;
+  stats: { total_consumed_gb: number; over_quota_count: number };
+};
+
+export type UsageResult = { ok: true; usage: UsageReportData } | { ok: false; error: string };
+
+export async function getUsage(): Promise<UsageReportData> {
+  const res = await apiFetch("/api/v1/usage");
+  return (await res.json()) as UsageReportData;
+}
+
+export async function loadUsage(): Promise<UsageResult> {
+  try {
+    return { ok: true, usage: await getUsage() };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
 export type Plan = {
   id: number;
   name: string;
