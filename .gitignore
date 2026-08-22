@@ -25,5 +25,9 @@ npm-debug.log*
 *.log
 .tools/
 
+# viewport-audit pixel baselines are environment-specific and persisted via
+# CI artifacts between nightly runs, never committed
+frontend/audit-baselines/
+
 # freebuff tool workspace
 .freebuff/

@@ -44,6 +44,9 @@ jobs:
   full-stack-smoke:
     name: Full-stack e2e smoke (docker compose)
     runs-on: ubuntu-latest
+    # gh api / gh run download need to read workflow runs and artifacts.
+    permissions:
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
@@ -69,10 +72,28 @@ jobs:
         with:
           node-version: "22"
 
+      # The pixel baseline is environment-specific (font rendering differs
+      # across OSes), so CI persists it as an artifact between runs instead
+      # of committing it. First nightly run has nothing to download and
+      # simply creates the baseline.
+      - name: Download previous viewport-audit baseline
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p frontend/audit-baselines
+          RUN_ID="$(gh api "repos/${{ github.repository }}/actions/workflows/nightly.yml/runs?per_page=3" \
+            --jq '.workflow_runs[] | select(.status == "completed") | .id' | head -1)"
+          echo "previous nightly run: $RUN_ID"
+          if [ -n "$RUN_ID" ]; then
+            gh run download "$RUN_ID" -n viewport-audit-baseline -D frontend/audit-baselines || true
+          fi
+
       - name: Viewport audit (375px + 1440px, all pages)
         run: node frontend/scripts/audit-viewports.mjs
         env:
           AUDIT_BASE_URL: http://127.0.0.1:3000
+          AUDIT_DIFF: "1"
 
       - name: Upload viewport audit screenshots
         if: failure()
@@ -80,6 +101,19 @@ jobs:
         with:
           name: viewport-audit-failures
           path: /tmp/netgrid-viewport-audit/*.png
+          if-no-files-found: ignore
+
+      # Persist the (possibly refreshed) baseline for the next nightly run.
+      # Runs even on failure so a baseline created on a green first run is
+      # never lost, and a failed diff never overwrites it (the script only
+      # refreshes on drift-only change).
+      - name: Upload viewport-audit baseline for next run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: viewport-audit-baseline
+          path: frontend/audit-baselines
+          retention-days: 30
           if-no-files-found: ignore
 
       - name: Dump compose logs on failure

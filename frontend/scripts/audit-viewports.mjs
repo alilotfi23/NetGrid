@@ -12,8 +12,19 @@
  * render with the authenticated nav and real data. Id-bearing detail/edit
  * pages (e.g. /subscribers/1, /subscribers/1/edit) are discovered live from
  * the list pages, so the whole route tree is exercised without hardcoding
- * ids. Screenshots of failing pages are written to the screenshot dir for
- * the nightly failure issue.
+ * ids. Two extra guarantees per page: no element may poke past the viewport
+ * unless it lives inside an overflow-x container, and horizontally
+ * scrollable tables/charts must scroll inside their own cards — panning one
+ * to its end must not move the page itself (scroll-position stability).
+ * Screenshots of failing pages are written to the screenshot dir for the
+ * nightly failure issue.
+ *
+ * With AUDIT_DIFF=1 the dashboard is additionally diffed against a pixel
+ * baseline (AUDIT_BASELINE_DIR, default frontend/audit-baselines): created
+ * when missing, refreshed on drift-only change, failing when more than
+ * AUDIT_MAX_CHANGED_PIXELS (default 0.12) of pixels change. Baselines are
+ * environment-specific (font rasterization differs across OSes), so CI
+ * persists it as an artifact between nightly runs rather than committing it.
  *
  * Requires:
  *   - Node >= 22 (native fetch + WebSocket)
@@ -41,6 +52,8 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import zlib from "node:zlib";
 
 // 127.0.0.1 (not "localhost") so the browser never resolves to ::1 while
 // the dev server listens on IPv4 only.
@@ -176,6 +189,284 @@ const AUDIT_FN = `(() => {
     })),
   };
 })()`;
+
+/**
+ * In-page scroll-stability probe: every horizontally scrollable element must
+ * scroll inside its own card — panning it to the far edge must not move the
+ * page itself — and the page must never arrive horizontally scrolled. Runs
+ * after AUDIT_FN and restores every scrollLeft it touches.
+ */
+const SCROLL_PROBE = `(() => {
+  const scrollX0 = window.scrollX;
+  const targets = [];
+  for (const el of document.querySelectorAll('*')) {
+    const s = getComputedStyle(el);
+    if (s.overflowX !== 'auto' && s.overflowX !== 'scroll') continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) continue;
+    if (el.scrollWidth <= el.clientWidth + 1) continue; // not actually scrollable
+    if (r.right > document.documentElement.clientWidth + 1) continue; // offender territory
+    targets.push(el);
+  }
+  const results = targets.map((el) => {
+    // Assign the max scroll offset; the browser clamps it to
+    // scrollWidth - clientWidth. "took" means the pan actually moved the
+    // container (it is genuinely scrollable and accepts a scroll).
+    el.scrollLeft = el.scrollWidth;
+    const took = el.scrollLeft > 0;
+    const pageMoved = window.scrollX !== scrollX0;
+    el.scrollLeft = 0;
+    return {
+      id: el.id || null,
+      cls: String(el.className).slice(0, 40),
+      took,
+      pageMoved,
+    };
+  });
+  return {
+    scrollX0,
+    finalScrollX: window.scrollX,
+    containerCount: targets.length,
+    results,
+  };
+})()`;
+
+// --- pixel-diff baseline (zero-dependency PNG decode/encode) -------------------
+// A strict pixel baseline would false-fail across operating systems (font
+// rasterization differs between Windows and Linux Chrome), so the baseline is
+// captured and compared in the same environment: CI persists it as a GitHub
+// artifact between nightly runs. The dashboard is live data, so the diff is
+// thresholded — small perpetual drift (ticking timestamps, durations) refreshes
+// the baseline, and only a change above AUDIT_MAX_CHANGED_PIXELS fails.
+
+const BASELINE_DIR =
+  process.env.AUDIT_BASELINE_DIR ||
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "audit-baselines");
+const DIFF_ENABLED = process.env.AUDIT_DIFF === "1";
+const MAX_CHANGED = Number(process.env.AUDIT_MAX_CHANGED_PIXELS || 0.12);
+// Below this fraction the change is treated as live-data drift and the
+// baseline is refreshed; between it and the threshold it's reported only.
+const STABLE_FACTOR = 0.5;
+const PER_PIXEL_DIFF = 24; // summed channel difference that counts a pixel
+
+const PNG_SIG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+
+function crc32(buf) {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    crc ^= buf[i];
+    for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function pngChunk(type, data) {
+  const out = Buffer.alloc(12 + data.length);
+  out.writeUInt32BE(data.length, 0);
+  out.write(type, 4, "ascii");
+  data.copy(out, 8);
+  out.writeUInt32BE(crc32(out.subarray(4, 8 + data.length)), 8 + data.length);
+  return out;
+}
+
+function writePng(width, height, rgba) {
+  const stride = width * 4;
+  const raw = Buffer.alloc((stride + 1) * height);
+  for (let y = 0; y < height; y++) {
+    raw[y * (stride + 1)] = 0; // filter: None
+    rgba.copy(raw, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // color type RGBA
+  return Buffer.concat([
+    PNG_SIG,
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlib.deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+function readPng(buffer) {
+  if (!buffer.subarray(0, 8).equals(PNG_SIG)) throw new Error("not a PNG");
+  let pos = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  const idat = [];
+  while (pos < buffer.length) {
+    const len = buffer.readUInt32BE(pos);
+    const type = buffer.toString("ascii", pos + 4, pos + 8);
+    const data = buffer.subarray(pos + 8, pos + 8 + len);
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+    } else if (type === "IDAT") {
+      idat.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+    pos += 12 + len;
+  }
+  if (!width || !height) throw new Error("PNG has no IHDR");
+  if (bitDepth !== 8) throw new Error(`unsupported bit depth ${bitDepth}`);
+  let channels;
+  if (colorType === 6) channels = 4; // RGBA
+  else if (colorType === 2) channels = 3; // RGB
+  else if (colorType === 0) channels = 1; // grayscale
+  else throw new Error(`unsupported color type ${colorType}`);
+  const raw = zlib.inflateSync(Buffer.concat(idat));
+  const stride = width * channels;
+  const out = Buffer.alloc(height * stride);
+  let prev = Buffer.alloc(stride);
+  let p = 0;
+  for (let y = 0; y < height; y++) {
+    const filter = raw[p++];
+    const line = out.subarray(y * stride, (y + 1) * stride);
+    const src = raw.subarray(p, p + stride);
+    p += stride;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= channels ? line[x - channels] : 0;
+      const b = prev[x];
+      const c = x >= channels ? prev[x - channels] : 0;
+      let v = src[x];
+      if (filter === 1) v = (v + a) & 0xff; // Sub
+      else if (filter === 2) v = (v + b) & 0xff; // Up
+      else if (filter === 3) v = (v + ((a + b) >> 1)) & 0xff; // Average
+      else if (filter === 4) {
+        // Paeth
+        const pa = Math.abs(b - c);
+        const pb = Math.abs(a - c);
+        const pc = Math.abs(a + b - 2 * c);
+        const pr = pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+        v = (v + pr) & 0xff;
+      }
+      line[x] = v;
+    }
+    prev = line;
+  }
+  return { width, height, channels, data: out };
+}
+
+function pixelChanged(a, b, i, j) {
+  return (
+    Math.abs(a[i] - b[j]) +
+      Math.abs(a[i + 1] - b[j + 1]) +
+      Math.abs(a[i + 2] - b[j + 2]) >
+    PER_PIXEL_DIFF
+  );
+}
+
+function diffPixels(a, b) {
+  const w = Math.min(a.width, b.width);
+  const h = Math.min(a.height, b.height);
+  const blocks = 24;
+  const bw = Math.max(1, Math.ceil(w / blocks));
+  const bh = Math.max(1, Math.ceil(h / blocks));
+  const blockChanged = new Array(blocks * blocks).fill(0);
+  let changed = 0;
+  let sumDiff = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const ai = (y * a.width + x) * a.channels;
+      const bi = (y * b.width + x) * b.channels;
+      const d =
+        Math.abs(a.data[ai] - b.data[bi]) +
+        Math.abs(a.data[ai + 1] - b.data[bi + 1]) +
+        Math.abs(a.data[ai + 2] - b.data[bi + 2]);
+      sumDiff += d;
+      if (d > PER_PIXEL_DIFF) {
+        changed++;
+        const bx = Math.min(blocks - 1, Math.floor(x / bw));
+        const by = Math.min(blocks - 1, Math.floor(y / bh));
+        blockChanged[by * blocks + bx] = 1;
+      }
+    }
+  }
+  return {
+    width: w,
+    height: h,
+    changedPixels: changed,
+    totalPixels: w * h,
+    fraction: w * h ? changed / (w * h) : 1,
+    meanAbsDiff: (w * h ? sumDiff / (w * h) : 0) / 3,
+    blockRows: Array.from({ length: blocks }, (_, by) =>
+      Array.from({ length: blocks }, (_, bx) => (blockChanged[by * blocks + bx] ? "#" : ".")).join("")
+    ),
+  };
+}
+
+function makeOverlay(a, b, w, h) {
+  const out = Buffer.alloc(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const ai = (y * a.width + x) * a.channels;
+      const bi = (y * b.width + x) * b.channels;
+      const oi = (y * w + x) * 4;
+      if (pixelChanged(a.data, b.data, ai, bi)) {
+        out[oi] = 239;
+        out[oi + 1] = 68;
+        out[oi + 2] = 68;
+        out[oi + 3] = 255; // red highlight
+      } else {
+        out[oi] = a.data[ai];
+        out[oi + 1] = a.data[ai + 1];
+        out[oi + 2] = a.data[ai + 2];
+        out[oi + 3] = a.channels > 3 ? a.data[ai + 3] : 255;
+      }
+    }
+  }
+  return out;
+}
+
+// Capture the dashboard at this viewport and diff against the persisted
+// baseline: create it when missing, refresh on drift-only change, fail when
+// the change exceeds the threshold. Returns whether the baseline check passed.
+async function baselineCheck(send, vw) {
+  const file = path.join(BASELINE_DIR, `dashboard-${vw}.png`);
+  fs.mkdirSync(BASELINE_DIR, { recursive: true });
+  const where = await evalJs(send, `JSON.stringify({ path: location.pathname, hasNav: !!document.querySelector('nav'), text: document.body.innerText.slice(0, 60) })`);
+  console.log(`baseline  capturing ${vw}px at ${where}`);
+  const shot = await send("Page.captureScreenshot", { format: "png" });
+  const current = Buffer.from(shot.data, "base64");
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, current);
+    console.log(`baseline  created ${file}`);
+    return true;
+  }
+  const a = readPng(current);
+  const b = readPng(fs.readFileSync(file));
+  const d = diffPixels(a, b);
+  const pct = (d.fraction * 100).toFixed(2);
+  console.log(`baseline  ${vw}px diff ${pct}% (mean ${d.meanAbsDiff.toFixed(2)}, ${d.changedPixels}/${d.totalPixels} px)`);
+  console.log(`baseline  changed regions (24-col grid):`);
+  for (const row of d.blockRows) console.log(`baseline    ${row}`);
+  if (d.fraction < MAX_CHANGED * STABLE_FACTOR) {
+    fs.writeFileSync(file, current);
+    console.log(`baseline  refreshed (drift only)`);
+    return true;
+  }
+  if (d.fraction >= MAX_CHANGED) {
+    const overlay = makeOverlay(a, b, d.width, d.height);
+    const diffFile = path.join(BASELINE_DIR, `dashboard-${vw}-diff.png`);
+    fs.writeFileSync(diffFile, writePng(d.width, d.height, overlay));
+    fs.writeFileSync(path.join(BASELINE_DIR, `dashboard-${vw}-current.png`), current);
+    failures.push({
+      vw,
+      path: `dashboard pixel baseline (${vw}px)`,
+      error: `${pct}% pixels changed (threshold ${(MAX_CHANGED * 100).toFixed(0)}%) — see ${diffFile}`,
+    });
+    console.log(`baseline  FAIL — ${pct}% changed`);
+    return false;
+  }
+  console.log(`baseline  drift ${pct}% (below ${(MAX_CHANGED * 100).toFixed(0)}% threshold; not refreshing)`);
+  return true;
+}
 
 // --- chrome discovery --------------------------------------------------------
 
@@ -363,6 +654,7 @@ async function checkRoute(send, vw, route) {
   let result;
   try {
     result = await auditRoute(send, route);
+    result.scroll = await evalJs(send, SCROLL_PROBE);
     if (route.marker && !(await evalJs(send, route.marker))) {
       throw new Error("page rendered without expected content");
     }
@@ -380,9 +672,15 @@ async function checkRoute(send, vw, route) {
     checked += 1;
     return false;
   }
-  const ok = !result.pageOverflow && result.offenders.length === 0;
+  const scroll = result.scroll;
+  const scrollOk =
+    scroll.scrollX0 === 0 &&
+    scroll.finalScrollX === 0 &&
+    scroll.results.every((r) => r.took && !r.pageMoved);
+  const ok = !result.pageOverflow && result.offenders.length === 0 && scrollOk;
   if (!ok) {
     const entry = { vw, path: route.path, result };
+    if (!scrollOk) entry.scroll = scroll;
     failures.push(entry);
     const file = path.join(SCREENSHOT_DIR, `${vw}-${route.path.replaceAll("/", "_")}.png`);
     try {
@@ -393,9 +691,12 @@ async function checkRoute(send, vw, route) {
     }
   }
   results.push({ vw, path: route.path, ok });
-  console.log(
-    `view ${vw}px  ${route.path}  ${ok ? "OK" : `FAIL (${result.offenders.length} offender(s))`}`
-  );
+  const reason = !ok
+    ? result.pageOverflow || result.offenders.length > 0
+      ? `${result.offenders.length} offender(s)`
+      : "scroll instability"
+    : "";
+  console.log(`view ${vw}px  ${route.path}  ${ok ? "OK" : `FAIL (${reason})`}`);
   checked += 1;
   return ok;
 }
@@ -411,6 +712,8 @@ async function saveScreenshot(send, file) {
 // audit silently broke. Inject a genuinely overflowing element on the last
 // page and require the detector to catch it.
 async function selfTest(send) {
+  // Overflow detector: inject a genuinely overflowing element and require the
+  // detector to flag it.
   const injected = await evalJs(
     send,
     `(() => {
@@ -428,9 +731,40 @@ async function selfTest(send) {
     (o) => o.cls.includes("audit-probe") || o.id === "audit-probe"
   );
   if (!caught) {
-    throw new Error("self-test: detector did not flag the injected overflow — audit is broken");
+    throw new Error(
+      "self-test: overflow detector did not flag the injected overflow — audit is broken"
+    );
   }
-  await evalJs(send, `document.getElementById('audit-probe')?.remove(); true`);
+  // Scroll-stability probe: inject a genuinely scrollable container and require
+  // the probe to find it, pan it, and classify it as stable (page unmoved). A
+  // probe that silently found zero containers would make the scroll check pass
+  // forever.
+  const scrollOk = await evalJs(
+    send,
+    `(() => {
+      const wrap = document.createElement('div');
+      wrap.id = 'audit-scroll-probe';
+      wrap.style.cssText =
+        'position:fixed;left:8px;top:8px;width:200px;height:20px;overflow-x:auto;background:#000;';
+      const inner = document.createElement('div');
+      inner.style.cssText = 'width:2000px;height:1px;';
+      wrap.appendChild(inner);
+      document.body.appendChild(wrap);
+      const res = ${SCROLL_PROBE};
+      wrap.remove();
+      const hit = res.results.find((r) => r.id === 'audit-scroll-probe');
+      return !!hit && hit.took && !hit.pageMoved;
+    })()`
+  );
+  if (!scrollOk) {
+    throw new Error(
+      "self-test: scroll probe did not find/classify the injected scrollable — audit is broken"
+    );
+  }
+  await evalJs(
+    send,
+    `document.getElementById('audit-probe')?.remove(); true`
+  );
 }
 
 // --- main --------------------------------------------------------------------
@@ -493,6 +827,13 @@ try {
       if (visited.has(route.path)) continue;
       visited.add(route.path);
       const ok = await checkRoute(send, vw, route);
+      // Pixel-diff baseline for the dashboard, captured at desktop width
+      // (opt-in via AUDIT_DIFF; CI persists the baseline between runs). Runs
+      // even if the page check failed — a broken dashboard should fail the
+      // pixel diff too, not hide behind the layout pass.
+      if (DIFF_ENABLED && vw === 1440 && route.path === "/") {
+        await baselineCheck(send, vw);
+      }
       if (!ok) continue; // don't discover children from a page that failed
       for (const d of DISCOVERY) {
         if (d.after !== route.path) continue;
@@ -503,7 +844,7 @@ try {
         if (!href) continue;
         const target = d.transform(href);
         if (!visited.has(target) && !queue.some((q) => q.path === target)) {
-          queue.push({ path: target, settle: d.settle });
+          queue.push({ path: target, settle: d.settle, marker: d.marker });
         }
       }
     }
@@ -543,10 +884,21 @@ if (failures.length > 0) {
       const id = o.id ? ` id="${o.id}"` : "";
       console.log(`    <${o.tag}${id} class="${o.cls}"> right=${o.right} w=${o.w}${o.left < 0 ? ` left=${o.left}` : ""}`);
     }
+    if (f.scroll) {
+      const unstable = f.scroll.results.filter((r) => !r.took || r.pageMoved);
+      console.log(
+        `    scroll: scrollX0=${f.scroll.scrollX0} final=${f.scroll.finalScrollX} ` +
+          `containers=${f.scroll.containerCount} unstable=${unstable.length}`
+      );
+      for (const u of unstable.slice(0, 4)) {
+        const id = u.id ? ` id="${u.id}"` : "";
+        console.log(`      <${u.cls}${id}> took=${u.took} pageMoved=${u.pageMoved}`);
+      }
+    }
     if (f.screenshot) console.log(`    screenshot: ${f.screenshot}`);
   }
   process.exit(1);
 }
 console.log(
-  `PASS — ${VIEWPORTS.length} viewport(s) × ${checked} page check(s) clean, detector verified`
+  `PASS — ${VIEWPORTS.length} viewport(s) × ${checked} page check(s) clean (overflow + scroll stability), detector verified`
 );

@@ -175,7 +175,10 @@ via the API through FreeRADIUS and verifies suspending them flips the verdict to
 checks the frontend serves pages, then runs the API smoke scripts against the compose
 backend), a **viewport audit** (`node frontend/scripts/audit-viewports.mjs` — seeds the demo
 dataset, then drives headless Chrome over every page at 375px and 1440px asserting nothing
-overflows its viewport, with failure screenshots uploaded as an artifact), plus the
+overflows its viewport and that horizontally scrollable tables/charts pan inside their own
+cards without moving the page; it also diffs a dashboard pixel baseline against the previous
+nightly's (persisted as a CI artifact) so paint/layout drift fails the audit, with screenshots
+uploaded as an artifact — enable with `AUDIT_DIFF=1`), plus the
 **RADIUS integration suite** (`tests/radius`) and `next build`.
 
 Nightly failures are easy to miss, so the workflow opens a **GitHub issue** (`nightly-failure`
