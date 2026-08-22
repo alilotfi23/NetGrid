@@ -55,9 +55,18 @@ docker compose ps --format "table {{.Name}}\t{{.Status}}"
 
 ## 2. RADIUS auth, end to end (sim-nas)
 
-The `sim-nas` container is a tiny Python RADIUS client (RFC 2865) that sends an
-Access-Request to FreeRADIUS every 30 seconds. Register it as a NAS device and
-seed a `demo-user` subscriber in one command:
+The `sim-nas` container plays both NAS roles with pure-Python, zero-dependency
+implementations:
+
+- **Auth client (RFC 2865)** — sends an Access-Request to FreeRADIUS every
+  30 seconds;
+- **CoA server (RFC 5176)** — listens on UDP 3799 and answers every authentic
+  Disconnect/CoA-Request with a real Disconnect-ACK, so the platform's pyrad
+  disconnect path gets an ACK instead of a timeout. It verifies the request
+  authenticator and Message-Authenticator against the shared NAS secret, and
+  drops (never replies to) packets that fail — exactly like a real NAS.
+
+Register it as a NAS device and seed a `demo-user` subscriber in one command:
 
 ```bash
 python scripts/setup-mikrotik-nas.py
@@ -116,9 +125,10 @@ Open http://localhost:3000 and log in as `superadmin`.
   <80%, amber 80–100%, red over quota) + rollup, live-polling.
 - **Live sessions** — the 5 seeded `radacct` rows with NAS/username/duration.
   Try the **Disconnect** action on one — it sends a real RFC 5176
-  Disconnect-Request via `pyrad` to the NAS IP (the sim-nas doesn't answer
-  CoA, so expect a timeout/NAK recorded in the audit log — against a real
-  MikroTik with the CoA port open it terminates the session).
+  Disconnect-Request via `pyrad` to the NAS IP. Sessions pointing at the
+  seeded `192.168.0.x` routers still time out (those IPs don't exist here),
+  but a session whose `nasipaddress` is the sim-nas container IP gets a real
+  **Disconnect-ACK** — the audit log records `result: "ack"` (see §6).
 - **Revenue trend** — 12 months of payments, fully populated by the seed.
 - **Recent activity** — live audit feed, with actor links into the pre-filtered
   audit log.
@@ -224,14 +234,19 @@ over quota on a plan with `enforce_quota` enabled** (all three demo plans have
 it on), with a 30-minute per-subscriber cooldown between actions.
 
 Fabricate a **current-month** over-quota session for `grace.hopper` (Pro, 500 GB,
-~3.2 GiB seeded usage — add 510 GiB so she's clearly over):
+~3.2 GiB seeded usage — add 510 GiB so she's clearly over). Point it at the
+**sim-nas container IP** so the CoA disconnect actually lands somewhere (the
+seeded `192.168.0.x` routers are unreachable in this environment):
 
 ```bash
-docker compose exec postgres psql -U netgrid -d netgrid <<'SQL'
+# The IP the setup script registered as a NAS (docker inspect if unsure)
+SIM_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' netgrid-sim-nas-1)
+
+docker compose exec postgres psql -U netgrid -d netgrid <<SQL
 INSERT INTO radacct (acctsessionid, acctuniqueid, username, nasipaddress,
                      acctstarttime, acctsessiontime,
                      acctinputoctets, acctoutputoctets, framedipaddress)
-VALUES ('demo-enforce-1', 'demo-enforce-uniq-1', 'grace.hopper', '192.168.0.10',
+VALUES ('demo-enforce-1', 'demo-enforce-uniq-1', 'grace.hopper', '$SIM_IP',
         now() - interval '1 hour', 3600,
         515396075520::bigint,   -- 480 GiB down
         32212254720::bigint,    --  30 GiB up
@@ -257,14 +272,19 @@ asyncio.run(main())
 #   sessions_disconnected=0, sessions_failed=1, ...)
 ```
 
-Two things to notice:
+What to expect:
 
-- **`over_quota=1, enforced=1`** — the job found the breach and acted.
-- **`sessions_failed=1`** — the sim-nas doesn't answer RFC 5176
-  Disconnect-Requests, so the pyrad call timed out. That's by design: one
-  failing session never aborts the sweep, and the failure is recorded in the
-  audit trail. Point it at a real MikroTik (CoA port 3799 open, or `tun`-based
-  RouterOS container) and you get `sessions_disconnected=1`.
+- **`over_quota=1, enforced=1, sessions_disconnected=1`** — the job found the
+  breach, sent the Disconnect-Request to the sim-nas, and the responder
+  verified it (request authenticator + Message-Authenticator against the NAS
+  shared secret) and replied Disconnect-ACK.
+- The **radacct row stays open** even after the ACK — the sim-nas is a
+  responder, not a router: it doesn't emit the Accounting-Stop that would
+  close the session (a real NAS does). The ACK is the proof the CoA path
+  works end to end; `disconnect_service` never writes `radacct`.
+- Failure tolerance is unchanged: a session whose NAS is unreachable counts
+  as `sessions_failed` without aborting the sweep, and the outcome lands in
+  the audit trail.
 
 Check the audit trail — each enforced subscriber gets one `quota_enforced`
 entry (usage vs quota + per-session outcomes) alongside the transport-level
@@ -305,7 +325,7 @@ docker compose exec postgres psql -U netgrid -d netgrid -c \
 | Pro | 500 GB | 10 GiB over → $5.00 |
 | Fiber | 1000 GB | 1 GiB over → $0.50 |
 
-**The three jobs involved** (all in `app/jobs/`, schedules in
+**The jobs involved** (all in `app/jobs/`, schedules in
 `app/jobs/invoice_generation.py`):
 
 | Job | Schedule | What it does |

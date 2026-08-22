@@ -89,7 +89,9 @@ services:
 
   sim-nas:
     # Simulated NAS: sends periodic RADIUS Access-Requests to FreeRADIUS,
-    # proving the full auth path (NAS → FreeRADIUS → SQL → radcheck).
+    # proving the full auth path (NAS → FreeRADIUS → SQL → radcheck), and
+    # answers RFC 5176 Disconnect/CoA-Requests on UDP 3799 with a real
+    # Disconnect-ACK so pyrad disconnects get an ack (not a timeout).
     # Register this device as a NAS in NetGrid after startup:
     #   bash scripts/setup-mikrotik-nas.sh
     build: ./docker/sim-nas
@@ -100,7 +102,10 @@ services:
       NAS_PASSWORD: demo-pass
       NAS_INTERVAL: "30"
       NAS_IP: 10.0.0.99
+      COA_PORT: "3799"
       PYTHONUNBUFFERED: "1"
+    ports:
+      - "3799:3799/udp"
     depends_on:
       freeradius:
         condition: service_started

@@ -235,7 +235,9 @@ def main() -> None:
     print(f"   Secret:    {NAS_SECRET}")
     print(f"   Device ID: {device_id}")
     print()
-    print("> The sim-nas container is now sending RADIUS requests every 30s.")
+    print("> The sim-nas container is now sending RADIUS requests every 30s")
+    print("> and answering CoA Disconnect-Requests on UDP 3799 (so pyrad")
+    print("> disconnects get a real Disconnect-ACK, not a timeout).")
     print("> Watch with: docker logs -f netgrid-sim-nas-1")
 
 

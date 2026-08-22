@@ -29,7 +29,8 @@ PostgreSQL · FreeRADIUS (`rlm_sql_postgresql`) · Redis · Docker Compose
 - **NAS device inventory** — shared secrets Fernet-encrypted at rest, mirrored 1:1 into
   FreeRADIUS's `nas` table; deactivating a device removes its row so FreeRADIUS rejects it.
 - **Live sessions + CoA** — open `radacct` sessions with NAS/shortname joins, and RFC 5176
-  Disconnect-Requests sent directly to the NAS via `pyrad`.
+  Disconnect-Requests sent directly to the NAS via `pyrad` (the sim-nas container answers
+  them with a real ACK, so the full disconnect loop is testable).
 - **Billing** — monthly invoice generation (prorated, idempotent), payments, an overdue
   sweep, and a revenue report.
 - **Data-cap lifecycle** — per-subscriber usage vs. quota (dashboard card + month-by-month
@@ -129,8 +130,9 @@ docker compose exec postgres psql -U netgrid -d netgrid \
 # invoices/payments, live sessions) — idempotent, safe to re-run.
 cd backend && python scripts/seed_dev.py
 
-# The sim-nas container sends periodic RADIUS Access-Requests to FreeRADIUS,
-# proving the full auth path. Register it as a NAS device and seed a subscriber:
+# The sim-nas container sends periodic RADIUS Access-Requests to FreeRADIUS
+# (auth path) and answers Disconnect/CoA-Requests on UDP 3799 with a real
+# Disconnect-ACK (disconnect path). Register it and seed a subscriber:
 bash scripts/setup-mikrotik-nas.sh        # or: python scripts/setup-mikrotik-nas.py
 docker compose logs -f sim-nas            # watch Access-Accept / Access-Reject
 ```
@@ -151,7 +153,7 @@ docker compose down -v       # also wipe the database
 | freeradius | `1812/1813` UDP | RADIUS auth/accounting against the shared DB |
 | backend | `localhost:8000` | FastAPI under `/api/v1` |
 | frontend | `localhost:3000` | Next.js dashboard |
-| sim-nas | — | simulated NAS sending periodic Access-Requests (auth-path testing) |
+| sim-nas | `3799/udp` | simulated NAS: periodic Access-Requests (auth-path testing) **and** an RFC 5176 CoA responder that ACKs Disconnect-Requests |
 
 The compose network is pinned to `172.28.0.0/16` — FreeRADIUS `clients.conf` only accepts
 packets from that subnet (`netgrid_radius_secret`) and from localhost (`testing123`, used
