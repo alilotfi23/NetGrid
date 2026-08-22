@@ -14,6 +14,7 @@ class UsageReportItem(BaseModel):
     plan_id: int
     plan_name: str
     quota_gb: int | None
+    enforce_quota: bool
     window_start: datetime
     window_end: datetime
     input_octets: int

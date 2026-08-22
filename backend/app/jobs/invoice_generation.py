@@ -1,6 +1,7 @@
-"""Scheduled billing jobs (Phase 10).
+"""Scheduled background jobs: billing (Phase 10) + over-quota enforcement.
 
-Two independent responsibilities, each with its own cron schedule:
+The app-wide scheduler is assembled here (main.py imports build_scheduler);
+three independent jobs, each with its own schedule:
 
 1. ``monthly-invoice-generation`` — first day of each month at 00:05 UTC:
    bills every active subscriber on an active plan for the current calendar
@@ -11,6 +12,10 @@ Two independent responsibilities, each with its own cron schedule:
    due date has passed from ``issued`` to ``overdue``. This runs daily (not
    monthly) so a subscriber's status reflects reality as soon as a due date
    passes, instead of waiting for the next month's generation job.
+
+3. ``quota-enforcement`` — every N minutes (configurable): disconnects live
+   sessions of subscribers at/over quota on enforcement-enabled plans, via
+   the same pyrad CoA path as the sessions API (see app.jobs.quota_enforcement).
 """
 
 import logging
@@ -18,9 +23,12 @@ from collections.abc import AsyncIterator
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.db import get_session
+from app.jobs.quota_enforcement import JOB_ID_QUOTA_ENFORCEMENT, _quota_enforcement_body
 from app.services import billing as billing_service
 
 logger = logging.getLogger(__name__)
@@ -65,7 +73,7 @@ async def _sessions() -> AsyncIterator[AsyncSession]:
 
 
 def build_scheduler() -> AsyncIOScheduler:
-    """The app-wide scheduler with both billing jobs registered."""
+    """The app-wide scheduler with the billing + quota-enforcement jobs."""
     scheduler = AsyncIOScheduler(timezone="UTC")
     scheduler.add_job(
         _monthly_generation_body,
@@ -77,6 +85,12 @@ def build_scheduler() -> AsyncIOScheduler:
         _daily_sweep_body,
         DAILY_OVERDUE_SWEEP_CRON,
         id=JOB_ID_DAILY_OVERDUE_SWEEP,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _quota_enforcement_body,
+        IntervalTrigger(minutes=get_settings().quota_enforcement_interval_minutes),
+        id=JOB_ID_QUOTA_ENFORCEMENT,
         replace_existing=True,
     )
     return scheduler

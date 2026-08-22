@@ -79,6 +79,7 @@ PLANS: list[dict[str, object]] = [
         "bandwidth_up_mbps": 5,
         "quota_gb": 200,
         "description": "10 Mbps residential plan",
+        "enforce_quota": True,
     },
     {
         "name": "Pro",
@@ -89,6 +90,7 @@ PLANS: list[dict[str, object]] = [
         "bandwidth_up_mbps": 10,
         "quota_gb": 500,
         "description": "25 Mbps residential plan",
+        "enforce_quota": True,
     },
     {
         "name": "Fiber",
@@ -99,6 +101,7 @@ PLANS: list[dict[str, object]] = [
         "bandwidth_up_mbps": 20,
         "quota_gb": 1000,
         "description": "50 Mbps fiber plan",
+        "enforce_quota": True,
     },
     {
         "name": "Legacy ADSL",

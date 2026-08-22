@@ -23,5 +23,8 @@ class Plan(TimestampMixin, Base):
     quota_gb: Mapped[int | None] = mapped_column(Integer)
     description: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Opt-in switch for the over-quota enforcement job: when true, the
+    # subscriber is disconnected (CoA) once current-month usage hits quota_gb.
+    enforce_quota: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     subscribers: Mapped[list["Subscriber"]] = relationship(back_populates="plan")

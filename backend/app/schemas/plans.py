@@ -21,6 +21,7 @@ class PlanOut(BaseModel):
     quota_gb: int | None = None
     description: str | None = None
     is_active: bool
+    enforce_quota: bool
     created_at: datetime
     # populated by the API from a grouped subscriber count (not a Plan column)
     subscriber_count: int = 0
@@ -36,6 +37,7 @@ class PlanCreate(BaseModel):
     quota_gb: int | None = Field(default=None, ge=0, le=1_000_000)
     description: str | None = Field(default=None, max_length=255)
     is_active: bool = True
+    enforce_quota: bool = False
 
 
 class PlanUpdate(BaseModel):
@@ -48,3 +50,4 @@ class PlanUpdate(BaseModel):
     quota_gb: int | None = Field(default=None, ge=0, le=1_000_000)
     description: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
+    enforce_quota: bool | None = None

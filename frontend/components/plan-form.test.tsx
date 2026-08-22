@@ -24,6 +24,7 @@ const PLAN: Plan = {
   quota_gb: 100,
   description: null,
   is_active: true,
+  enforce_quota: true,
   created_at: "2026-08-19T00:00:00",
   subscriber_count: 2,
 };
@@ -54,6 +55,7 @@ describe("PlanForm (create)", () => {
     expect(screen.getByLabelText("Download (Mbps)")).toBeTruthy();
     expect(screen.getByLabelText("Upload (Mbps)")).toBeTruthy();
     expect(screen.getByLabelText("Quota (GB, optional)")).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /enforce quota/i })).toBeTruthy();
   });
 
   it("POSTs the payload and navigates to the list on success", async () => {
@@ -73,6 +75,7 @@ describe("PlanForm (create)", () => {
         price: "19.99",
         quota_gb: null,
         is_active: true,
+        enforce_quota: false,
       }),
     );
   });
@@ -113,6 +116,10 @@ describe("PlanForm (edit)", () => {
     expect(screen.getByLabelText("Download (Mbps)")).toHaveProperty("value", "10");
     expect(screen.queryByLabelText("Name")).toBeNull();
     expect(screen.queryByLabelText("RADIUS group")).toBeNull();
+    expect(screen.getByRole("checkbox", { name: /enforce quota/i })).toHaveProperty(
+      "checked",
+      true,
+    );
   });
 
   it("PATCHes to the plan endpoint and navigates on success", async () => {

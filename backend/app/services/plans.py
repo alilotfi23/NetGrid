@@ -163,6 +163,7 @@ async def create_plan(
     quota_gb: int | None = None,
     description: str | None = None,
     is_active: bool = True,
+    enforce_quota: bool = False,
 ) -> Plan:
     """Create the plan row and its radgroupreply rows in one transaction."""
     plan = Plan(
@@ -175,6 +176,7 @@ async def create_plan(
         quota_gb=quota_gb,
         description=description,
         is_active=is_active,
+        enforce_quota=enforce_quota,
     )
     session.add(plan)
     # no_autoflush: the sync's bulk deletes would otherwise flush the pending
@@ -206,6 +208,7 @@ async def update_plan(
     quota_gb: int | None = None,
     description: str | None = None,
     is_active: bool | None = None,
+    enforce_quota: bool | None = None,
 ) -> Plan:
     """Apply plan changes; bandwidth/quota changes re-sync the RADIUS group rows."""
     changed: list[str] = []
@@ -230,6 +233,9 @@ async def update_plan(
     if is_active is not None and is_active != plan.is_active:
         plan.is_active = is_active
         changed.append("is_active")
+    if enforce_quota is not None and enforce_quota != plan.enforce_quota:
+        plan.enforce_quota = enforce_quota
+        changed.append("enforce_quota")
 
     if changed:
         with session.no_autoflush:

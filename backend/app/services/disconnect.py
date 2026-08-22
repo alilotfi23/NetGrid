@@ -116,15 +116,19 @@ def send_disconnect_request(
     return cast(int, reply.code)
 
 
-async def disconnect_session(session: AsyncSession, *, session_id: int, actor_id: int) -> str:
+async def disconnect_session(
+    session: AsyncSession, *, session_id: int, actor_id: int | None
+) -> str:
     """Disconnect a live session by sending its NAS a Disconnect-Request.
 
     Resolves the open radacct row, finds the active inventory NAS for its
     IP, decrypts the shared secret, and sends the packet (off the event
     loop). Every attempt is recorded in audit_log with its outcome
-    (ack/nak/timeout). Returns \"disconnected\" on Disconnect-ACK; raises
-    NotFoundError (unknown/ended session), ConflictError (no active NAS or
-    Disconnect-NAK) or GatewayError (no reply).
+    (ack/nak/timeout); ``actor_id`` is None for system-initiated disconnects
+    (e.g. the over-quota enforcement job). Returns \"disconnected\" on
+    Disconnect-ACK; raises NotFoundError (unknown/ended session),
+    ConflictError (no active NAS or Disconnect-NAK) or GatewayError (no
+    reply).
     """
     row = (
         await session.execute(select(RadAcct).where(RadAcct.id == session_id))

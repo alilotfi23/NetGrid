@@ -16,6 +16,7 @@ type PlanFormValues = {
   quota_gb: string;
   description: string;
   is_active: boolean;
+  enforce_quota: boolean;
 };
 
 function initialValues(plan?: Plan): PlanFormValues {
@@ -29,6 +30,7 @@ function initialValues(plan?: Plan): PlanFormValues {
     quota_gb: plan?.quota_gb != null ? String(plan.quota_gb) : "",
     description: plan?.description ?? "",
     is_active: plan?.is_active ?? true,
+    enforce_quota: plan?.enforce_quota ?? false,
   };
 }
 
@@ -93,6 +95,7 @@ export function PlanForm({ plan }: { plan?: Plan }) {
       quota_gb: quota,
       description: values.description.trim() === "" ? null : values.description.trim(),
       is_active: values.is_active,
+      enforce_quota: values.enforce_quota,
     };
 
     setSubmitting(true);
@@ -242,6 +245,18 @@ export function PlanForm({ plan }: { plan?: Plan }) {
           onChange={(e) => set("is_active", e.target.checked)}
         />
         Active
+      </label>
+
+      <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+        <input
+          type="checkbox"
+          checked={values.enforce_quota}
+          onChange={(e) => set("enforce_quota", e.target.checked)}
+        />
+        Enforce quota
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          (disconnect sessions when the monthly cap is reached)
+        </span>
       </label>
 
       <div className="flex gap-3">

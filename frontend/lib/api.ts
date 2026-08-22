@@ -119,6 +119,7 @@ export type Plan = {
   quota_gb: number | null;
   description: string | null;
   is_active: boolean;
+  enforce_quota: boolean;
   created_at: string;
   subscriber_count: number;
 };

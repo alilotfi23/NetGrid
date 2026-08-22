@@ -23,6 +23,13 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # Over-quota enforcement job (data-cap lifecycle): how often the APScheduler
+    # job polls the usage report, and the per-subscriber cooldown between
+    # enforcement attempts (a re-run inside the cooldown window skips a breach
+    # it already acted on, so a stuck session isn't hammered every interval).
+    quota_enforcement_interval_minutes: int = 5
+    quota_enforce_cooldown_minutes: int = 30
+
 
 @lru_cache
 def get_settings() -> Settings:

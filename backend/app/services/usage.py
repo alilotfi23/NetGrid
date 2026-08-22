@@ -233,6 +233,7 @@ class UsageReportRow:
     plan_id: int
     plan_name: str
     quota_gb: int | None
+    enforce_quota: bool
     window_start: datetime
     window_end: datetime
     input_octets: int
@@ -262,6 +263,7 @@ class UsageReportRow:
             "plan_id": self.plan_id,
             "plan_name": self.plan_name,
             "quota_gb": self.quota_gb,
+            "enforce_quota": self.enforce_quota,
             "window_start": self.window_start.isoformat(),
             "window_end": self.window_end.isoformat(),
             "input_octets": self.input_octets,
@@ -282,18 +284,18 @@ async def get_usage_report(session: AsyncSession) -> list[UsageReportRow]:
     — they have no cap to track against.
     """
     result = await session.execute(
-        select(Subscriber, Plan.name, Plan.quota_gb)
+        select(Subscriber, Plan.name, Plan.quota_gb, Plan.enforce_quota)
         .join(Plan, Plan.id == Subscriber.plan_id)
         .order_by(Subscriber.username)
     )
     pairs = result.all()
     if not pairs:
         return []
-    usernames = [sub.username for sub, _, _ in pairs]
+    usernames = [sub.username for sub, _, _, _ in pairs]
     usage_by_username = {u.username: u for u in await summarize_usage(session, usernames=usernames)}
     start, end = month_window()
     rows = []
-    for sub, plan_name, quota_gb in pairs:
+    for sub, plan_name, quota_gb, enforce_quota in pairs:
         usage = usage_by_username.get(sub.username)
         rows.append(
             UsageReportRow(
@@ -303,6 +305,7 @@ async def get_usage_report(session: AsyncSession) -> list[UsageReportRow]:
                 plan_id=cast(int, sub.plan_id),
                 plan_name=plan_name,
                 quota_gb=quota_gb,
+                enforce_quota=bool(enforce_quota),
                 window_start=start,
                 window_end=end,
                 input_octets=usage.input_octets if usage else 0,
