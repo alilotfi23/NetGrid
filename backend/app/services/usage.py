@@ -19,6 +19,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import cast
 
 from sqlalchemy import func, select
@@ -234,6 +235,7 @@ class UsageReportRow:
     plan_name: str
     quota_gb: int | None
     enforce_quota: bool
+    overage_price_per_gb: Decimal | None
     window_start: datetime
     window_end: datetime
     input_octets: int
@@ -264,6 +266,7 @@ class UsageReportRow:
             "plan_name": self.plan_name,
             "quota_gb": self.quota_gb,
             "enforce_quota": self.enforce_quota,
+            "overage_price_per_gb": self.overage_price_per_gb,
             "window_start": self.window_start.isoformat(),
             "window_end": self.window_end.isoformat(),
             "input_octets": self.input_octets,
@@ -275,27 +278,44 @@ class UsageReportRow:
         }
 
 
-async def get_usage_report(session: AsyncSession) -> list[UsageReportRow]:
-    """Current-month consumption vs plan quota for every plan-assigned subscriber.
+async def get_usage_report(
+    session: AsyncSession,
+    *,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> list[UsageReportRow]:
+    """Consumption vs plan quota for every plan-assigned subscriber over a window.
 
-    Subscribers without any session rows in the window appear with zero usage
-    (their quota still shows), so the operator sees the whole book, not just
-    who has traffic. Ordered by username. Unplanned subscribers are excluded
-    — they have no cap to track against.
+    Defaults to the current calendar month; pass ``start``/``end`` for an
+    explicit (right-open) window — e.g. the overage billing sweep bills a
+    *closed* previous month. Subscribers without any session rows in the
+    window appear with zero usage (their quota still shows), so the operator
+    sees the whole book, not just who has traffic. Ordered by username.
+    Unplanned subscribers are excluded — they have no cap to track against.
     """
+    if start is None or end is None:
+        start, end = month_window()
     result = await session.execute(
-        select(Subscriber, Plan.name, Plan.quota_gb, Plan.enforce_quota)
+        select(
+            Subscriber,
+            Plan.name,
+            Plan.quota_gb,
+            Plan.enforce_quota,
+            Plan.overage_price_per_gb,
+        )
         .join(Plan, Plan.id == Subscriber.plan_id)
         .order_by(Subscriber.username)
     )
     pairs = result.all()
     if not pairs:
         return []
-    usernames = [sub.username for sub, _, _, _ in pairs]
-    usage_by_username = {u.username: u for u in await summarize_usage(session, usernames=usernames)}
-    start, end = month_window()
+    usernames = [sub.username for sub, _, _, _, _ in pairs]
+    usage_by_username = {
+        u.username: u
+        for u in await summarize_usage(session, start=start, end=end, usernames=usernames)
+    }
     rows = []
-    for sub, plan_name, quota_gb, enforce_quota in pairs:
+    for sub, plan_name, quota_gb, enforce_quota, overage_price in pairs:
         usage = usage_by_username.get(sub.username)
         rows.append(
             UsageReportRow(
@@ -306,6 +326,7 @@ async def get_usage_report(session: AsyncSession) -> list[UsageReportRow]:
                 plan_name=plan_name,
                 quota_gb=quota_gb,
                 enforce_quota=bool(enforce_quota),
+                overage_price_per_gb=overage_price,
                 window_start=start,
                 window_end=end,
                 input_octets=usage.input_octets if usage else 0,

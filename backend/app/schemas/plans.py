@@ -22,6 +22,7 @@ class PlanOut(BaseModel):
     description: str | None = None
     is_active: bool
     enforce_quota: bool
+    overage_price_per_gb: Decimal | None = None
     created_at: datetime
     # populated by the API from a grouped subscriber count (not a Plan column)
     subscriber_count: int = 0
@@ -38,6 +39,9 @@ class PlanCreate(BaseModel):
     description: str | None = Field(default=None, max_length=255)
     is_active: bool = True
     enforce_quota: bool = False
+    overage_price_per_gb: Decimal | None = Field(
+        default=None, ge=0, max_digits=10, decimal_places=2
+    )
 
 
 class PlanUpdate(BaseModel):
@@ -51,3 +55,6 @@ class PlanUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
     enforce_quota: bool | None = None
+    overage_price_per_gb: Decimal | None = Field(
+        default=None, ge=0, max_digits=10, decimal_places=2
+    )

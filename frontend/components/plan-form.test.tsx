@@ -25,6 +25,7 @@ const PLAN: Plan = {
   description: null,
   is_active: true,
   enforce_quota: true,
+  overage_price_per_gb: "0.50",
   created_at: "2026-08-19T00:00:00",
   subscriber_count: 2,
 };
@@ -55,6 +56,7 @@ describe("PlanForm (create)", () => {
     expect(screen.getByLabelText("Download (Mbps)")).toBeTruthy();
     expect(screen.getByLabelText("Upload (Mbps)")).toBeTruthy();
     expect(screen.getByLabelText("Quota (GB, optional)")).toBeTruthy();
+    expect(screen.getByLabelText("Overage price per GB (optional)")).toBeTruthy();
     expect(screen.getByRole("checkbox", { name: /enforce quota/i })).toBeTruthy();
   });
 
@@ -76,6 +78,7 @@ describe("PlanForm (create)", () => {
         quota_gb: null,
         is_active: true,
         enforce_quota: false,
+        overage_price_per_gb: null,
       }),
     );
   });
@@ -119,6 +122,10 @@ describe("PlanForm (edit)", () => {
     expect(screen.getByRole("checkbox", { name: /enforce quota/i })).toHaveProperty(
       "checked",
       true,
+    );
+    expect(screen.getByLabelText("Overage price per GB (optional)")).toHaveProperty(
+      "value",
+      "0.50",
     );
   });
 

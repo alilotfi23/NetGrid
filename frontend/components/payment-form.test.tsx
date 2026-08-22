@@ -17,6 +17,7 @@ const INVOICE: Invoice = {
   subscriber_id: 7,
   subscriber_username: "bob",
   plan_name: "Starter",
+  kind: "base",
   period_start: "2026-03-01",
   period_end: "2026-03-30",
   amount: "10.00",

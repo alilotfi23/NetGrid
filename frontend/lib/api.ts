@@ -77,6 +77,8 @@ export type UsageRow = {
   plan_id: number;
   plan_name: string;
   quota_gb: number | null;
+  enforce_quota: boolean;
+  overage_price_per_gb: string | null;
   window_start: string;
   window_end: string;
   input_octets: number;
@@ -120,6 +122,7 @@ export type Plan = {
   description: string | null;
   is_active: boolean;
   enforce_quota: boolean;
+  overage_price_per_gb: string | null;
   created_at: string;
   subscriber_count: number;
 };
@@ -541,6 +544,7 @@ export type Invoice = {
   subscriber_id: number;
   subscriber_username: string | null;
   plan_name: string;
+  kind: string; // base = subscription bill, overage = usage surcharge
   period_start: string;
   period_end: string;
   amount: string;

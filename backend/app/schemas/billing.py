@@ -31,6 +31,7 @@ class InvoiceOut(BaseModel):
     subscriber_id: int
     subscriber_username: str | None = None  # joined by the API layer, not a column
     plan_name: str
+    kind: str = "base"  # base = subscription bill, overage = usage surcharge
     period_start: date
     period_end: date
     amount: Decimal

@@ -26,5 +26,7 @@ class Plan(TimestampMixin, Base):
     # Opt-in switch for the over-quota enforcement job: when true, the
     # subscriber is disconnected (CoA) once current-month usage hits quota_gb.
     enforce_quota: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Per-GB rate charged for consumption beyond quota_gb (NULL = no surcharge).
+    overage_price_per_gb: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
     subscribers: Mapped[list["Subscriber"]] = relationship(back_populates="plan")

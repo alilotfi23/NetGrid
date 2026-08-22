@@ -13,6 +13,8 @@ function row(overrides: Partial<UsageRow> = {}): UsageRow {
     plan_id: 1,
     plan_name: "Starter",
     quota_gb: 100,
+    enforce_quota: false,
+    overage_price_per_gb: "0.50",
     window_start: "2026-08-01T00:00:00Z",
     window_end: "2026-09-01T00:00:00Z",
     input_octets: 512345678,

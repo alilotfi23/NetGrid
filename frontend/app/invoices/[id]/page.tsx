@@ -25,6 +25,15 @@ function statusBadge(status: string) {
   );
 }
 
+function kindBadge(kind: string) {
+  if (kind !== "overage") return null;
+  return (
+    <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+      Usage surcharge
+    </span>
+  );
+}
+
 export default async function InvoiceDetailPage({
   params,
 }: {
@@ -66,6 +75,7 @@ export default async function InvoiceDetailPage({
             Invoice #{invoice.id}
           </h1>
           {statusBadge(invoice.status)}
+          {kindBadge(invoice.kind)}
         </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           {invoice.plan_name} · {formatDay(invoice.period_start)} –{" "}

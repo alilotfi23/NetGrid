@@ -16,6 +16,13 @@ three independent jobs, each with its own schedule:
 3. ``quota-enforcement`` — every N minutes (configurable): disconnects live
    sessions of subscribers at/over quota on enforcement-enabled plans, via
    the same pyrad CoA path as the sessions API (see app.jobs.quota_enforcement).
+
+4. ``overage-billing`` — on the 2nd of each month at 00:15 UTC: bills
+   per-GB surcharges for consumption beyond plan quota in the *previous*
+   (now closed) month, from the radacct usage report (see
+   generate_overage_invoices in app.services.billing). It runs a day after
+   the monthly generation so the base invoices exist first, and after the
+   daily overdue sweep so fresh surcharges start ``issued``.
 """
 
 import logging
@@ -35,11 +42,13 @@ logger = logging.getLogger(__name__)
 
 JOB_ID_MONTHLY_GENERATION = "monthly-invoice-generation"
 JOB_ID_DAILY_OVERDUE_SWEEP = "daily-overdue-sweep"
+JOB_ID_OVERAGE_BILLING = "overage-billing"
 
 # Staggered so the monthly job (00:05) finishes before the daily sweep (00:10)
 # runs — a fresh invoice is never past-due, but the order keeps both cheap.
 MONTHLY_GENERATION_CRON = CronTrigger(day=1, hour=0, minute=5)
 DAILY_OVERDUE_SWEEP_CRON = CronTrigger(hour=0, minute=10)
+OVERAGE_BILLING_CRON = CronTrigger(day=2, hour=0, minute=15)
 
 
 async def run_invoice_generation(session: AsyncSession) -> int:
@@ -64,6 +73,18 @@ async def _monthly_generation_body() -> None:
 async def _daily_sweep_body() -> None:
     async for session in _sessions():
         await run_overdue_sweep(session)
+
+
+async def run_overage_billing(session: AsyncSession) -> int:
+    """Bill previous-month usage surcharges. Returns the number created."""
+    created = await billing_service.generate_overage_invoices(session)
+    logger.info("overage billing: created=%s", created)
+    return created
+
+
+async def _overage_billing_body() -> None:
+    async for session in _sessions():
+        await run_overage_billing(session)
 
 
 async def _sessions() -> AsyncIterator[AsyncSession]:
@@ -91,6 +112,12 @@ def build_scheduler() -> AsyncIOScheduler:
         _quota_enforcement_body,
         IntervalTrigger(minutes=get_settings().quota_enforcement_interval_minutes),
         id=JOB_ID_QUOTA_ENFORCEMENT,
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _overage_billing_body,
+        OVERAGE_BILLING_CRON,
+        id=JOB_ID_OVERAGE_BILLING,
         replace_existing=True,
     )
     return scheduler

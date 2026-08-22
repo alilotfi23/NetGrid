@@ -17,6 +17,7 @@ type PlanFormValues = {
   description: string;
   is_active: boolean;
   enforce_quota: boolean;
+  overage_price_per_gb: string;
 };
 
 function initialValues(plan?: Plan): PlanFormValues {
@@ -31,6 +32,7 @@ function initialValues(plan?: Plan): PlanFormValues {
     description: plan?.description ?? "",
     is_active: plan?.is_active ?? true,
     enforce_quota: plan?.enforce_quota ?? false,
+    overage_price_per_gb: plan?.overage_price_per_gb ?? "",
   };
 }
 
@@ -96,6 +98,8 @@ export function PlanForm({ plan }: { plan?: Plan }) {
       description: values.description.trim() === "" ? null : values.description.trim(),
       is_active: values.is_active,
       enforce_quota: values.enforce_quota,
+      overage_price_per_gb:
+        values.overage_price_per_gb.trim() === "" ? null : values.overage_price_per_gb.trim(),
     };
 
     setSubmitting(true);
@@ -192,6 +196,21 @@ export function PlanForm({ plan }: { plan?: Plan }) {
             className={inputClass}
             value={values.quota_gb}
             onChange={(e) => set("quota_gb", e.target.value)}
+          />
+        </div>
+        <div>
+          <label htmlFor="overage_price_per_gb" className={labelClass}>
+            Overage price per GB (optional)
+          </label>
+          <input
+            id="overage_price_per_gb"
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            className={inputClass}
+            value={values.overage_price_per_gb}
+            onChange={(e) => set("overage_price_per_gb", e.target.value)}
           />
         </div>
       </div>

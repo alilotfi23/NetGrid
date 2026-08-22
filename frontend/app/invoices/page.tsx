@@ -44,6 +44,15 @@ function statusHref(status: string, year: string | undefined): string {
   return qs ? `/invoices?${qs}` : "/invoices";
 }
 
+function kindBadge(kind: string) {
+  if (kind !== "overage") return null;
+  return (
+    <span className="ml-1.5 inline-block rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+      surcharge
+    </span>
+  );
+}
+
 function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -82,7 +91,10 @@ function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
                   </Link>
                 )}
               </td>
-              <td className="px-4 py-3">{invoice.plan_name}</td>
+              <td className="px-4 py-3">
+                {invoice.plan_name}
+                {kindBadge(invoice.kind)}
+              </td>
               <td className="px-4 py-3 whitespace-nowrap">
                 {formatDay(invoice.period_start)} – {formatDay(invoice.period_end)}
               </td>
@@ -139,8 +151,9 @@ export default async function InvoicesPage({
               Invoices
             </h1>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              Monthly bills for active subscribers. Payments accumulate against
-              an invoice; it flips to paid once completed payments reach its
+              Monthly bills for active subscribers, plus per-GB surcharges for
+              usage beyond a plan&apos;s quota. Payments accumulate against an
+              invoice; it flips to paid once completed payments reach its
               amount.
             </p>
           </div>

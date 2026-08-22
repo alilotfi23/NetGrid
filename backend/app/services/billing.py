@@ -26,10 +26,13 @@ from app.models.billing import Invoice, Payment
 from app.models.plan import Plan
 from app.models.subscriber import Subscriber
 from app.services import audit as audit_service
+from app.services import usage as usage_service
 
 INVOICE_ISSUED = "issued"
 INVOICE_PAID = "paid"
 INVOICE_OVERDUE = "overdue"
+INVOICE_BASE = "base"
+INVOICE_OVERAGE = "overage"
 
 PAYMENT_PENDING = "pending"
 PAYMENT_COMPLETED = "completed"
@@ -178,9 +181,10 @@ async def generate_invoices(
     """Generate one invoice per active subscriber on an active plan for the period.
 
     Defaults to the current calendar month. Idempotent: a subscriber who
-    already has an invoice whose period overlaps [period_start, period_end]
-    is skipped, so re-running the job never double-bills. Returns the number
-    of invoices created.
+    already has a *base* invoice whose period overlaps [period_start,
+    period_end] is skipped (overage surcharges are a separate kind with
+    their own idempotency in generate_overage_invoices), so re-running the
+    job never double-bills. Returns the number of invoices created.
     """
     today = date.today()
     start = period_start or today.replace(day=1)
@@ -209,6 +213,7 @@ async def generate_invoices(
                 .select_from(Invoice)
                 .where(
                     Invoice.subscriber_id == subscriber.id,
+                    Invoice.kind == INVOICE_BASE,
                     Invoice.period_start <= end,
                     Invoice.period_end >= start,
                 )
@@ -225,6 +230,7 @@ async def generate_invoices(
             Invoice(
                 subscriber_id=subscriber.id,
                 plan_name=plan.name,
+                kind=INVOICE_BASE,
                 period_start=start,
                 period_end=end,
                 amount=amount,
@@ -260,6 +266,108 @@ async def mark_overdue_invoices(session: AsyncSession) -> int:
     await session.commit()
     # CursorResult.rowcount: how many rows the UPDATE actually changed
     return result.rowcount or 0  # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Usage overage surcharges (usage-based billing)
+# ---------------------------------------------------------------------------
+
+
+def compute_overage_amount(usage_gb: float, quota_gb: int, price_per_gb: Decimal) -> Decimal:
+    """Surcharge for ``usage_gb`` on a ``quota_gb`` cap at a per-GB rate.
+
+    Fractional excess is billed fractionally (12.7 GB over at $0.50 = $6.35),
+    rounded half-up to cents. Returns 0.00 when usage is within quota.
+    """
+    excess = Decimal(str(usage_gb)) - Decimal(quota_gb)
+    if excess <= 0:
+        return Decimal("0.00")
+    return (excess * price_per_gb).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+async def generate_overage_invoices(
+    session: AsyncSession,
+    *,
+    period_start: date | None = None,
+    period_end: date | None = None,
+    actor_id: int | None = None,
+) -> int:
+    """Bill per-GB surcharges for usage beyond plan quota in a completed period.
+
+    Defaults to the previous calendar month — the base invoice for the
+    current month is generated on the 1st, and by the 2nd the prior month's
+    radacct is settled enough to bill. Only plans with both a quota cap and
+    an ``overage_price_per_gb`` are considered; excess GB is billed at that
+    rate (fractional, half-up to cents). Idempotent per (subscriber, period,
+    kind=overage), so re-runs never double-bill; a subscriber's *base*
+    invoice for the same period doesn't collide because kinds are separate.
+    Returns the number of invoices created.
+    """
+    if period_start is None or period_end is None:
+        # previous calendar month: the month before the current month's first day
+        this_month_start = date.today().replace(day=1)
+        period_end = this_month_start - timedelta(days=1)
+        period_start = period_end.replace(day=1)
+    start, end = period_start, period_end
+    if end < start:
+        raise BadRequestError("period_end must be on or after period_start")
+
+    window_start = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
+    window_end = datetime.combine(end + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
+    report = await usage_service.get_usage_report(session, start=window_start, end=window_end)
+
+    created = 0
+    total_amount = Decimal("0.00")
+    for row in report:
+        if row.quota_gb is None or row.overage_price_per_gb is None:
+            continue
+        amount = compute_overage_amount(row.total_gb, row.quota_gb, row.overage_price_per_gb)
+        if amount <= 0:
+            continue
+        already = (
+            await session.execute(
+                select(func.count())
+                .select_from(Invoice)
+                .where(
+                    Invoice.subscriber_id == row.subscriber_id,
+                    Invoice.kind == INVOICE_OVERAGE,
+                    Invoice.period_start == start,
+                    Invoice.period_end == end,
+                )
+            )
+        ).scalar_one()
+        if already > 0:
+            continue
+        session.add(
+            Invoice(
+                subscriber_id=row.subscriber_id,
+                plan_name=row.plan_name,
+                kind=INVOICE_OVERAGE,
+                period_start=start,
+                period_end=end,
+                amount=amount,
+                status=INVOICE_ISSUED,
+                due_at=end,
+            )
+        )
+        created += 1
+        total_amount += amount
+
+    await session.commit()
+    if actor_id is not None and created:
+        await audit_service.record_audit(
+            session,
+            admin_id=actor_id,
+            action="overage",
+            resource="invoices",
+            metadata_={
+                "created": created,
+                "period_start": start.isoformat(),
+                "period_end": end.isoformat(),
+                "total_amount": str(total_amount.quantize(CENT)),
+            },
+        )
+    return created
 
 
 # ---------------------------------------------------------------------------

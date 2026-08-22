@@ -1,6 +1,7 @@
 """Pydantic schemas for the data-cap usage report (usage:read)."""
 
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel
 
@@ -15,6 +16,7 @@ class UsageReportItem(BaseModel):
     plan_name: str
     quota_gb: int | None
     enforce_quota: bool
+    overage_price_per_gb: Decimal | None
     window_start: datetime
     window_end: datetime
     input_octets: int

@@ -80,6 +80,7 @@ PLANS: list[dict[str, object]] = [
         "quota_gb": 200,
         "description": "10 Mbps residential plan",
         "enforce_quota": True,
+        "overage_price_per_gb": Decimal("0.50"),
     },
     {
         "name": "Pro",
@@ -91,6 +92,7 @@ PLANS: list[dict[str, object]] = [
         "quota_gb": 500,
         "description": "25 Mbps residential plan",
         "enforce_quota": True,
+        "overage_price_per_gb": Decimal("0.50"),
     },
     {
         "name": "Fiber",
@@ -102,6 +104,7 @@ PLANS: list[dict[str, object]] = [
         "quota_gb": 1000,
         "description": "50 Mbps fiber plan",
         "enforce_quota": True,
+        "overage_price_per_gb": Decimal("0.50"),
     },
     {
         "name": "Legacy ADSL",

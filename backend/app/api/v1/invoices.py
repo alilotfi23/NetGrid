@@ -114,6 +114,31 @@ async def generate_invoices(
     return InvoiceGenerateResult(created=created)
 
 
+@router.post("/overage/generate", response_model=InvoiceGenerateResult)
+@limiter.limit(LIMITS["invoice_write"])
+async def generate_overage_invoices(
+    request: Request,
+    response: Response,
+    payload: InvoiceGenerateRequest,
+    session: SessionDep,
+    actor: Annotated[Admin, Depends(require_permission("invoices:write"))],
+) -> InvoiceGenerateResult:
+    """POST /api/v1/invoices/overage/generate — requires invoices:write.
+
+    Manual trigger of the usage overage sweep: bills per-GB surcharges for
+    consumption beyond plan quota in a completed period (defaults to the
+    previous calendar month). Idempotent — a subscriber already surcharged
+    for the period is skipped.
+    """
+    created = await billing_service.generate_overage_invoices(
+        session,
+        period_start=payload.period_start,
+        period_end=payload.period_end,
+        actor_id=actor.id,
+    )
+    return InvoiceGenerateResult(created=created)
+
+
 @router.get("/{invoice_id}", response_model=InvoiceOut)
 @limiter.limit(LIMITS["invoice_read"])
 async def get_invoice(

@@ -15,6 +15,8 @@ class Invoice(TimestampMixin, Base):
         ForeignKey("subscribers.id", ondelete="CASCADE"), nullable=False
     )
     plan_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    # base = the monthly subscription bill; overage = per-GB usage surcharge
+    kind: Mapped[str] = mapped_column(String(16), default="base", nullable=False)
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)

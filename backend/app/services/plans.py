@@ -164,6 +164,7 @@ async def create_plan(
     description: str | None = None,
     is_active: bool = True,
     enforce_quota: bool = False,
+    overage_price_per_gb: Decimal | None = None,
 ) -> Plan:
     """Create the plan row and its radgroupreply rows in one transaction."""
     plan = Plan(
@@ -177,6 +178,7 @@ async def create_plan(
         description=description,
         is_active=is_active,
         enforce_quota=enforce_quota,
+        overage_price_per_gb=overage_price_per_gb,
     )
     session.add(plan)
     # no_autoflush: the sync's bulk deletes would otherwise flush the pending
@@ -209,6 +211,7 @@ async def update_plan(
     description: str | None = None,
     is_active: bool | None = None,
     enforce_quota: bool | None = None,
+    overage_price_per_gb: Decimal | None = None,
 ) -> Plan:
     """Apply plan changes; bandwidth/quota changes re-sync the RADIUS group rows."""
     changed: list[str] = []
@@ -236,6 +239,9 @@ async def update_plan(
     if enforce_quota is not None and enforce_quota != plan.enforce_quota:
         plan.enforce_quota = enforce_quota
         changed.append("enforce_quota")
+    if overage_price_per_gb is not None and overage_price_per_gb != plan.overage_price_per_gb:
+        plan.overage_price_per_gb = overage_price_per_gb
+        changed.append("overage_price_per_gb")
 
     if changed:
         with session.no_autoflush:
