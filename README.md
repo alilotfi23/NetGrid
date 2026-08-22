@@ -144,6 +144,26 @@ docker compose down          # keep the postgres volume
 docker compose down -v       # also wipe the database
 ```
 
+## Try the demo
+
+Once the stack is up, [`docs/demo.md`](./docs/demo.md) is a copy-pasteable walkthrough
+of the seeded demo dataset that proves every layer of the data-cap lifecycle with real
+data — from a NAS authenticating against FreeRADIUS to a per-GB overage surcharge
+invoice and a CoA session disconnect. Each section ends with cleanup steps, so nothing
+is left behind:
+
+1. [Start the stack and seed the demo data](./docs/demo.md#1-start-the-stack-and-seed-the-demo-data)
+2. [RADIUS auth, end to end (sim-nas)](./docs/demo.md#2-radius-auth-end-to-end-sim-nas)
+3. [Tour the dashboard](./docs/demo.md#3-tour-the-dashboard)
+4. [The usage read path](./docs/demo.md#4-the-usage-read-path)
+5. [Overage surcharge, end to end](./docs/demo.md#5-overage-surcharge-end-to-end-) — 30 GiB over a 200 GB quota becomes a $15.00 `overage` invoice
+6. [Quota enforcement (CoA disconnect)](./docs/demo.md#6-quota-enforcement-coa-disconnect) — an over-quota session gets a real Disconnect-ACK
+
+```bash
+cd backend && python scripts/seed_dev.py     # one command, idempotent
+python scripts/setup-mikrotik-nas.py         # register sim-nas + seed demo-user
+```
+
 ## Services
 
 | Service | Address | Notes |
@@ -218,7 +238,7 @@ ruff format --check app tests
 mypy app                     # strict mode
 ```
 
-**388 backend tests** (unit + integration) and **306 frontend tests** (Vitest/RTL) pass at
+**400 backend tests** (unit + integration) and **306 frontend tests** (Vitest/RTL) pass at
 HEAD. There is also a scripted RADIUS suite under `backend/tests/radius`
 (`radtest`/`radclient` against a test FreeRADIUS instance, including the failed-auth
 lockout policy).
@@ -262,6 +282,7 @@ failures auto-open a `nightly-failure` GitHub issue that closes itself on the ne
 ## Docs
 
 - `CLAUDE.md` — architecture, pinned decisions, RBAC/rate-limiting design, build phases
+- `docs/demo.md` — the end-to-end demo walkthrough (linked from **Try the demo** above)
 - `docs/` — design spec and task-by-task implementation plans
 - `CONTRIBUTING.md` — setting up a dev environment, conventions, testing, and the PR process
 
