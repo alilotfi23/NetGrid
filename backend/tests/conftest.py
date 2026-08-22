@@ -70,6 +70,23 @@ async def _clear_rbac_cache() -> None:
         await redis.aclose()
 
 
+async def _clear_usage_cache() -> None:
+    """Drop stale usage:* keys.
+
+    The usage service caches per-subscriber aggregates in Redis (TTL 60s);
+    tests seed the same demo usernames against a fresh database, so a leftover
+    cache entry from an earlier test in the same run would serve an old value.
+    """
+    redis = get_redis()
+    try:
+        async for key in redis.scan_iter("usage:*"):
+            await redis.delete(key)
+    except Exception:
+        pass
+    finally:
+        await redis.aclose()
+
+
 @pytest_asyncio.fixture
 async def engine():
     # Function-scoped so each test's event loop owns its connection pool; a
@@ -89,6 +106,7 @@ async def session(engine):
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     await _clear_rbac_cache()
+    await _clear_usage_cache()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
         yield session
