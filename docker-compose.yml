@@ -87,6 +87,34 @@ services:
       start_period: 30s
     networks: [netgrid]
 
+  sim-nas:
+    # Simulated NAS: sends periodic RADIUS Access-Requests to FreeRADIUS,
+    # proving the full auth path (NAS → FreeRADIUS → SQL → radcheck).
+    # Register this device as a NAS in NetGrid after startup:
+    #   bash scripts/setup-mikrotik-nas.sh
+    build: ./docker/sim-nas
+    environment:
+      RADIUS_HOST: freeradius
+      RADIUS_SECRET: netgrid_radius_secret
+      NAS_USERNAME: demo-user
+      NAS_PASSWORD: demo-pass
+      NAS_INTERVAL: "30"
+      NAS_IP: 10.0.0.99
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      freeradius:
+        condition: service_started
+    networks: [netgrid]
+    # --- MikroTik RouterOS (Linux hosts with /dev/net/tun only) ---
+    # Uncomment the block below and remove sim-nas above for a real
+    # RouterOS container.  Requires: Linux Docker, /dev/net/tun, NET_ADMIN.
+    # image: cnsoluciones/mikrotik:latest
+    # privileged: true
+    # devices: ["/dev/net/tun:/dev/net/tun"]
+    # cap_add: [NET_ADMIN]
+    # ports: ["8728:8728", "8729:8729", "8080:80"]
+    # volumes: ["./docker/mikrotik/autorun.rsc:/rw/disk/autorun.rsc:ro"]
+
 networks:
   netgrid:
     ipam:
