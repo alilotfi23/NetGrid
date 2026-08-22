@@ -8,8 +8,9 @@ import {
   loadSubscriber,
   loadSubscriberHistory,
   loadSubscriberSessions,
+  loadSubscriberUsage,
 } from "@/lib/api";
-import { formatBytes, formatDate, formatDuration } from "@/lib/format";
+import { formatBytes, formatDate, formatDuration, formatMonth } from "@/lib/format";
 
 const statusStyles: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
@@ -54,11 +55,12 @@ export default async function SubscriberProfilePage({
 }) {
   const { id } = await params;
   const subscriberId = Number(id);
-  const [sub, history, sessions, plans] = await Promise.all([
+  const [sub, history, sessions, plans, usage] = await Promise.all([
     loadSubscriber(subscriberId),
     loadSubscriberHistory(subscriberId),
     loadSubscriberSessions(subscriberId),
     loadPlans(),
+    loadSubscriberUsage(subscriberId),
   ]);
 
   if (!sub.ok) {
@@ -178,6 +180,100 @@ export default async function SubscriberProfilePage({
                 </tbody>
               </table>
             </div>
+          )}
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">Usage history</h2>
+          {!usage.ok ? (
+            <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+              Couldn&apos;t load usage: {usage.error}
+            </p>
+          ) : (
+            <>
+              {usage.months[0]?.quota_gb != null && (
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  Plan quota: {usage.months[0].quota_gb} GB per month
+                </p>
+              )}
+              <div className="mt-4 overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Month</th>
+                      <th className="px-4 py-3 font-medium">Downloaded</th>
+                      <th className="px-4 py-3 font-medium">Uploaded</th>
+                      <th className="px-4 py-3 font-medium">Total</th>
+                      <th className="px-4 py-3 font-medium">Sessions</th>
+                      <th className="px-4 py-3 font-medium">Quota used</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                    {usage.months.map((m) => {
+                      const pct = m.pct_used;
+                      const width = pct == null ? 0 : Math.min(pct, 100);
+                      const barColor =
+                        pct == null
+                          ? "bg-zinc-300 dark:bg-zinc-700"
+                          : pct >= 100
+                            ? "bg-red-500"
+                            : pct >= 80
+                              ? "bg-amber-500"
+                              : "bg-emerald-500";
+                      return (
+                        <tr key={m.month} className="bg-white dark:bg-zinc-950">
+                          <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-50">
+                            {formatMonth(m.month)}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">
+                            {formatBytes(m.input_octets)}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">
+                            {formatBytes(m.output_octets)}
+                          </td>
+                          <td className="px-4 py-3 font-medium text-zinc-700 dark:text-zinc-300">
+                            {formatBytes(m.total_octets)}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">
+                            {m.session_count}
+                          </td>
+                          <td className="px-4 py-3">
+                            {pct == null ? (
+                              <span className="text-zinc-500 dark:text-zinc-400">—</span>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <div
+                                  role="progressbar"
+                                  aria-valuenow={Math.round(width)}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-label={`${m.month} quota used`}
+                                  className="h-1.5 w-24 rounded-full bg-zinc-100 dark:bg-zinc-800"
+                                >
+                                  <div
+                                    className={`h-1.5 rounded-full ${barColor}`}
+                                    style={{ width: `${width}%` }}
+                                  />
+                                </div>
+                                <span
+                                  className={`text-xs tabular-nums ${
+                                    pct >= 100
+                                      ? "text-red-600 dark:text-red-400"
+                                      : "text-zinc-500 dark:text-zinc-400"
+                                  }`}
+                                >
+                                  {pct.toFixed(1)}%
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </section>
 

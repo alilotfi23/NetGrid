@@ -8,7 +8,7 @@ from app.models.plan import Plan
 from app.models.radius import RadAcct
 from app.models.rbac import Admin, Permission, Role
 from app.models.subscriber import Subscriber
-from app.services.usage import month_window
+from app.services.usage import month_window, monthly_windows
 
 
 async def _seed_admin(session, username, codes) -> Admin:
@@ -167,5 +167,76 @@ async def test_usage_without_permission_403(client, session):
     token = await _login(client)
 
     resp = await client.get("/api/v1/usage", headers=_auth(token))
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "FORBIDDEN"
+
+
+async def _seed_session_in(session, username: str, in_octets: int, out_octets: int, start) -> None:
+    session.add(
+        RadAcct(
+            username=username,
+            nasipaddress="192.168.0.10",
+            acctstarttime=start,
+            acctsessiontime=3600,
+            acctinputoctets=in_octets,
+            acctoutputoctets=out_octets,
+            framedipaddress="10.0.0.5",
+        )
+    )
+
+
+async def test_subscriber_usage_history_endpoint(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    plan = _seed_plan(session, "Starter", quota_gb=100)
+    sub = _seed_subscriber(session, plan, "demo-a1")
+    await session.commit()
+
+    prev, current = monthly_windows(2)
+    # 1 GiB this month + 2 GiB last month
+    await _seed_session_in(session, "demo-a1", 1024**3, 0, current[0] + timedelta(hours=12))
+    await _seed_session_in(session, "demo-a1", 2 * 1024**3, 0, prev[0] + timedelta(hours=6))
+    await session.commit()
+
+    resp = await client.get(f"/api/v1/subscribers/{sub.id}/usage", headers=_auth(token))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 12  # default window
+    assert body[-1]["month"] == current[0].strftime("%Y-%m")
+    assert body[-1]["total_octets"] == 1024**3
+    assert body[-1]["total_gb"] == 1.0
+    assert body[-1]["session_count"] == 1
+    assert body[-1]["quota_gb"] == 100
+    assert body[-1]["pct_used"] == 1.0
+    assert body[-2]["total_octets"] == 2 * 1024**3  # previous month
+    assert body[-2]["pct_used"] == 2.0
+    assert all("-" in m["month"] and len(m["month"]) == 7 for m in body)
+
+
+async def test_subscriber_usage_history_months_param(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+    plan = _seed_plan(session, "Starter", quota_gb=100)
+    sub = _seed_subscriber(session, plan, "demo-a1")
+    await session.commit()
+
+    resp = await client.get(f"/api/v1/subscribers/{sub.id}/usage?months=2", headers=_auth(token))
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
+
+
+async def test_subscriber_usage_history_unknown_subscriber_404(client, session):
+    await _seed_admin(session, "boss", ["*:*"])
+    token = await _login(client)
+
+    resp = await client.get("/api/v1/subscribers/999999/usage", headers=_auth(token))
+    assert resp.status_code == 404
+
+
+async def test_subscriber_usage_history_requires_subscribers_read(client, session):
+    await _seed_admin(session, "boss", ["plans:read"])
+    token = await _login(client)
+
+    resp = await client.get("/api/v1/subscribers/1/usage", headers=_auth(token))
     assert resp.status_code == 403
     assert resp.json()["error"]["code"] == "FORBIDDEN"

@@ -343,3 +343,112 @@ async def test_clear_usage_cache_removes_keys(session):
     finally:
         await redis.aclose()
     assert after == []
+
+
+# --------------------------------------------------------------------------- monthly_windows
+
+
+async def test_monthly_windows_spans_year_boundary():
+    windows = usage_service.monthly_windows(4, reference=datetime(2026, 1, 15, tzinfo=UTC))
+    assert len(windows) == 4
+    assert [w[0] for w in windows] == [
+        datetime(2025, 10, 1, tzinfo=UTC),
+        datetime(2025, 11, 1, tzinfo=UTC),
+        datetime(2025, 12, 1, tzinfo=UTC),
+        datetime(2026, 1, 1, tzinfo=UTC),
+    ]
+    # right-open: every end is the next start (or the month after the last)
+    assert windows[-1][1] == datetime(2026, 2, 1, tzinfo=UTC)
+    for start, end in windows:
+        assert start < end
+
+
+async def test_monthly_windows_single_month():
+    windows = usage_service.monthly_windows(1, reference=datetime(2026, 8, 15, tzinfo=UTC))
+    assert windows == [(datetime(2026, 8, 1, tzinfo=UTC), datetime(2026, 9, 1, tzinfo=UTC))]
+
+
+async def test_monthly_windows_rejects_zero():
+    try:
+        usage_service.monthly_windows(0)
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass
+
+
+# ------------------------------------------------------------------ get_subscriber_usage_history
+
+
+async def _seed_subscriber_row(session, plan: Plan, username: str) -> Subscriber:
+    sub = Subscriber(username=username, full_name=f"{username} Smith", status="active", plan=plan)
+    session.add(sub)
+    return sub
+
+
+async def test_usage_history_fills_zero_months(session):
+    plan = await _seed_plan(session, quota_gb=100)
+    sub = await _seed_subscriber_row(session, plan, "bob")
+    await session.commit()
+
+    entries = await usage_service.get_subscriber_usage_history(session, sub, months=3)
+    assert len(entries) == 3
+    assert all(e.total_octets == 0 and e.session_count == 0 for e in entries)
+    assert [e.month for e in entries] == sorted(e.month for e in entries)
+
+
+async def test_usage_history_aggregates_per_month_and_attributes_by_start(session):
+    plan = await _seed_plan(session, quota_gb=100)
+    sub = await _seed_subscriber_row(session, plan, "bob")
+    await session.commit()
+
+    prev, current = usage_service.monthly_windows(2)
+    await _seed_session(
+        session,
+        username="bob",
+        in_octets=1024**3,
+        out_octets=0,
+        start=current[0] + timedelta(hours=12),
+    )
+    await _seed_session(
+        session,
+        username="bob",
+        in_octets=512 * 1024**2,
+        out_octets=512 * 1024**2,
+        start=current[0] + timedelta(days=5),
+    )
+    # started last month, closed this month -> billed to last month
+    await _seed_session(
+        session,
+        username="bob",
+        in_octets=1024**3,
+        start=prev[0] + timedelta(hours=6),
+        stop=current[0] + timedelta(hours=1),
+    )
+    await session.commit()
+
+    entries = await usage_service.get_subscriber_usage_history(session, sub, months=2)
+    by_month = {e.month: e for e in entries}
+    cur = by_month[current[0].strftime("%Y-%m")]
+    assert cur.total_octets == 2 * 1024**3  # 1 GiB + (0.5 + 0.5) GiB
+    assert cur.session_count == 2
+    assert cur.pct_used == 2.0  # 2 GiB of the 100 GiB quota
+    assert cur.quota_gb == 100
+    assert by_month[prev[0].strftime("%Y-%m")].total_octets == 1024**3
+    assert by_month[prev[0].strftime("%Y-%m")].session_count == 1
+
+
+async def test_usage_history_pct_none_when_plan_has_no_quota(session):
+    plan = await _seed_plan(session, name="Unlimited", quota_gb=None)
+    sub = await _seed_subscriber_row(session, plan, "bob")
+    await session.commit()
+
+    current = usage_service.monthly_windows(1)[-1]
+    await _seed_session(
+        session, username="bob", in_octets=1024**3, start=current[0] + timedelta(hours=12)
+    )
+    await session.commit()
+
+    (entry,) = await usage_service.get_subscriber_usage_history(session, sub, months=1)
+    assert entry.quota_gb is None
+    assert entry.pct_used is None
+    assert entry.total_gb == 1.0

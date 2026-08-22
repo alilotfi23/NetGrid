@@ -394,6 +394,43 @@ export async function loadSubscriberSessions(id: number): Promise<SubscriberSess
   }
 }
 
+/** One calendar month of a subscriber's radacct consumption (profile view). */
+export type SubscriberUsageMonth = {
+  month: string; // "YYYY-MM"
+  start: string;
+  end: string;
+  input_octets: number;
+  output_octets: number;
+  total_octets: number;
+  total_gb: number;
+  session_count: number;
+  quota_gb: number | null;
+  pct_used: number | null;
+};
+
+export async function getSubscriberUsage(
+  id: number,
+  months = 12,
+): Promise<SubscriberUsageMonth[]> {
+  const res = await apiFetch(`/api/v1/subscribers/${id}/usage?months=${months}`);
+  return (await res.json()) as SubscriberUsageMonth[];
+}
+
+export type SubscriberUsageResult =
+  | { ok: true; months: SubscriberUsageMonth[] }
+  | { ok: false; error: string };
+
+export async function loadSubscriberUsage(
+  id: number,
+  months = 12,
+): Promise<SubscriberUsageResult> {
+  try {
+    return { ok: true, months: await getSubscriberUsage(id, months) };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
 export type NasDevice = {
   id: number;
   name: string;

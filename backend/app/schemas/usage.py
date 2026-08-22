@@ -37,3 +37,18 @@ class UsageReport(BaseModel):
     items: list[UsageReportItem]
     total: int
     stats: UsageStats
+
+
+class SubscriberUsageMonth(BaseModel):
+    """One calendar month of consumption for a single subscriber's profile."""
+
+    month: str  # "YYYY-MM"
+    start: datetime
+    end: datetime
+    input_octets: int
+    output_octets: int
+    total_octets: int
+    total_gb: float
+    session_count: int
+    quota_gb: int | None
+    pct_used: float | None

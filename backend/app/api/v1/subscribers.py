@@ -23,7 +23,9 @@ from app.schemas.subscribers import (
     SubscriberStats,
     SubscriberUpdate,
 )
+from app.schemas.usage import SubscriberUsageMonth
 from app.services import subscribers as subscribers_service
+from app.services import usage as usage_service
 
 router = APIRouter(prefix="/subscribers", tags=["subscribers"])
 
@@ -147,6 +149,28 @@ async def subscriber_sessions(
     subscriber = await subscribers_service.get_subscriber_or_404(session, subscriber_id)
     sessions = await subscribers_service.get_live_sessions(session, subscriber.username)
     return [LiveSessionOut.model_validate(s) for s in sessions]
+
+
+@router.get("/{subscriber_id}/usage", response_model=list[SubscriberUsageMonth])
+@limiter.limit(LIMITS["subscriber_read"])
+async def subscriber_usage_history(
+    request: Request,
+    response: Response,
+    subscriber_id: int,
+    session: SessionDep,
+    _: Annotated[Admin, Depends(require_permission("subscribers:read"))],
+    months: int = Query(12, ge=1, le=24),
+) -> list[SubscriberUsageMonth]:
+    """GET /api/v1/subscribers/{id}/usage — requires subscribers:read.
+
+    Month-by-month radacct consumption for the subscriber's username over
+    the last `months` months (default 12, max 24), oldest first, including
+    months with no traffic. `pct_used` is against the subscriber's current
+    plan quota (null when the plan has no cap).
+    """
+    subscriber = await subscribers_service.get_subscriber_or_404(session, subscriber_id)
+    entries = await usage_service.get_subscriber_usage_history(session, subscriber, months=months)
+    return [SubscriberUsageMonth(**entry.to_dict()) for entry in entries]
 
 
 @router.patch("/{subscriber_id}", response_model=SubscriberOut)

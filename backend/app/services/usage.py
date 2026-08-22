@@ -311,3 +311,116 @@ async def get_usage_report(session: AsyncSession) -> list[UsageReportRow]:
             )
         )
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Per-subscriber month-by-month history
+# ---------------------------------------------------------------------------
+
+
+def monthly_windows(
+    months: int, reference: datetime | None = None
+) -> list[tuple[datetime, datetime]]:
+    """[(start, end) for the last ``months`` calendar months], oldest first.
+
+    Like month_window, each window is right-open [start, end) in UTC, and the
+    final window is the current (in-progress) month — the end of the last
+    window is the first instant of the *next* month. Spanning December→January
+    rolls over correctly.
+    """
+    if months < 1:
+        raise ValueError("months must be >= 1")
+    ref = (reference or datetime.now(UTC)).astimezone(UTC)
+    end = (
+        datetime(ref.year + 1, 1, 1, tzinfo=UTC)
+        if ref.month == 12
+        else datetime(ref.year, ref.month + 1, 1, tzinfo=UTC)
+    )
+    windows: list[tuple[datetime, datetime]] = []
+    for _ in range(months):
+        start = (
+            datetime(end.year - 1, 12, 1, tzinfo=UTC)
+            if end.month == 1
+            else datetime(end.year, end.month - 1, 1, tzinfo=UTC)
+        )
+        windows.append((start, end))
+        end = start
+    windows.reverse()
+    return windows
+
+
+@dataclass(frozen=True)
+class SubscriberUsageMonth:
+    """One calendar month of consumption for one subscriber."""
+
+    month: str  # "YYYY-MM"
+    start: datetime
+    end: datetime
+    input_octets: int
+    output_octets: int
+    session_count: int
+    quota_gb: int | None
+    pct_used: float | None
+
+    @property
+    def total_octets(self) -> int:
+        return self.input_octets + self.output_octets
+
+    @property
+    def total_gb(self) -> float:
+        return octets_to_gb(self.total_octets)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "month": self.month,
+            "start": self.start.isoformat(),
+            "end": self.end.isoformat(),
+            "input_octets": self.input_octets,
+            "output_octets": self.output_octets,
+            "total_octets": self.total_octets,
+            "total_gb": self.total_gb,
+            "session_count": self.session_count,
+            "quota_gb": self.quota_gb,
+            "pct_used": self.pct_used,
+        }
+
+
+async def get_subscriber_usage_history(
+    session: AsyncSession,
+    subscriber: Subscriber,
+    *,
+    months: int = 12,
+) -> list[SubscriberUsageMonth]:
+    """Per-month consumption for one subscriber over the last ``months`` months.
+
+    Returns one entry per calendar month, oldest first, with zero usage for
+    months where the subscriber had no sessions — so the profile view renders
+    a complete timeline without special-casing gaps. Octets are attributed by
+    session start (a session that began last month and closed this month is
+    billed to last month). ``pct_used`` is computed against the subscriber's
+    *current* plan quota, the best available proxy when a subscriber switched
+    plans mid-history; it is None when the current plan has no cap.
+    """
+    quota_gb: int | None = None
+    if subscriber.plan_id is not None:
+        plan = await session.get(Plan, subscriber.plan_id)
+        quota_gb = plan.quota_gb if plan else None
+
+    entries: list[SubscriberUsageMonth] = []
+    for start, end in monthly_windows(months):
+        rows = await summarize_usage(session, start=start, end=end, usernames=[subscriber.username])
+        usage = rows[0] if rows else None
+        total = usage.total_octets if usage else 0
+        entries.append(
+            SubscriberUsageMonth(
+                month=start.strftime("%Y-%m"),
+                start=start,
+                end=end,
+                input_octets=usage.input_octets if usage else 0,
+                output_octets=usage.output_octets if usage else 0,
+                session_count=usage.session_count if usage else 0,
+                quota_gb=quota_gb,
+                pct_used=(round(octets_to_gb(total) / quota_gb * 100, 1) if quota_gb else None),
+            )
+        )
+    return entries
