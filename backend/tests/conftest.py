@@ -9,9 +9,10 @@ import app.models  # noqa: F401  # register every model on Base.metadata
 from app.core.config import get_settings
 from app.core.db import get_session
 from app.core.rate_limit import limiter as app_limiter
-from app.core.redis import get_redis
 from app.main import create_app
 from app.models.base import Base
+from app.services import rbac as rbac_service
+from app.services import usage as usage_service
 
 
 def _test_database_url() -> str:
@@ -58,16 +59,12 @@ async def _clear_rbac_cache() -> None:
 
     Postgres sequences are not reset by drop_all/create_all, so admin ids are
     reused across pytest runs — a stale permission cache from a previous run
-    (TTL 60s) would otherwise serve an old permission set to a fresh test.
+    (TTL 60s) would otherwise serve an old permission set to a fresh test. The
+    service call is worker-scoped under pytest-xdist: the workers share one
+    Redis but run separate databases, so clearing globally would race (and
+    wipe) a sibling worker's live cache.
     """
-    redis = get_redis()
-    try:
-        async for key in redis.scan_iter("rbac:perms:*"):
-            await redis.delete(key)
-    except Exception:
-        pass
-    finally:
-        await redis.aclose()
+    await rbac_service.clear_permission_cache()
 
 
 async def _clear_usage_cache() -> None:
@@ -76,15 +73,9 @@ async def _clear_usage_cache() -> None:
     The usage service caches per-subscriber aggregates in Redis (TTL 60s);
     tests seed the same demo usernames against a fresh database, so a leftover
     cache entry from an earlier test in the same run would serve an old value.
+    Like the rbac clear above, this is worker-scoped under pytest-xdist.
     """
-    redis = get_redis()
-    try:
-        async for key in redis.scan_iter("usage:*"):
-            await redis.delete(key)
-    except Exception:
-        pass
-    finally:
-        await redis.aclose()
+    await usage_service.clear_usage_cache()
 
 
 @pytest_asyncio.fixture

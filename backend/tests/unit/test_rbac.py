@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from app.core.rbac import (
@@ -52,6 +54,17 @@ def test_version_changes_with_set():
 
 def test_ttl_is_at_most_60_seconds():
     assert 0 < PERM_CACHE_TTL_SECONDS <= 60
+
+
+def test_cache_prefix_is_worker_scoped() -> None:
+    """The permission-cache prefix (and its per-test clear) is worker-scoped.
+
+    Under pytest-xdist the workers share one Redis but run separate databases
+    where admin ids restart at 1, so a global namespace would let one worker's
+    per-test clear wipe (or a stale read hit) another worker's live cache.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "")
+    assert rbac_service.CACHE_PREFIX == (f"rbac:perms:{worker}:" if worker else "rbac:perms:")
 
 
 async def _seed_admin_with_roles(session, username="alice", role_codes=None) -> Admin:

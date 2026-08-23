@@ -39,7 +39,7 @@ CACHE_TTL_SECONDS = 60
 # worker's consumption to another. Namespace by worker when running in
 # parallel (same pattern as the RBAC permission cache).
 _worker = os.environ.get("PYTEST_XDIST_WORKER", "")
-_CACHE_PREFIX = f"usage:{_worker}:" if _worker else "usage:"
+CACHE_PREFIX = f"usage:{_worker}:" if _worker else "usage:"
 
 
 @dataclass(frozen=True)
@@ -127,7 +127,7 @@ async def summarize_usage(
 
 def _cache_key(username: str, start: datetime, end: datetime) -> str:
     stamp = f"{start.isoformat()}/{end.isoformat()}"
-    return f"{_CACHE_PREFIX}sub:{stamp}:{username}"
+    return f"{CACHE_PREFIX}sub:{stamp}:{username}"
 
 
 async def _read_cache(key: str) -> SubscriberUsage | None:
@@ -204,7 +204,7 @@ async def clear_usage_cache() -> None:
     """Drop every cached usage record (call after reprovisioning, in tests)."""
     redis = get_redis()
     try:
-        async for key in redis.scan_iter(f"{_CACHE_PREFIX}*"):
+        async for key in redis.scan_iter(f"{CACHE_PREFIX}*"):
             await redis.delete(key)
     except Exception:
         pass  # keys expire on their own

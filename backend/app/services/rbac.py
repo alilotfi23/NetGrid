@@ -19,7 +19,8 @@ from app.models.rbac import Admin, Permission, Role, admin_roles, role_permissio
 # at 1 again — a shared cache keyed only by admin id would serve one worker's
 # permission set to another's. Namespace by worker when running in parallel.
 _worker = os.environ.get("PYTEST_XDIST_WORKER", "")
-CACHE_KEY = f"rbac:perms:{_worker}:{{}}" if _worker else "rbac:perms:{}"
+CACHE_PREFIX = f"rbac:perms:{_worker}:" if _worker else "rbac:perms:"
+CACHE_KEY = f"{CACHE_PREFIX}{{}}"
 
 
 @dataclass(frozen=True)
@@ -93,5 +94,22 @@ async def invalidate_admin_permissions(admin_id: int) -> None:
         await redis.delete(CACHE_KEY.format(admin_id))
     except Exception:
         pass  # TTL self-heals
+    finally:
+        await redis.aclose()
+
+
+async def clear_permission_cache() -> None:
+    """Drop every cached permission set for this worker (or globally when not parallel).
+
+    Same worker scoping as clear_usage_cache: with pytest-xdist the workers
+    share one Redis but run separate databases, so a test may only clear its
+    own namespace or it would race (and wipe) a sibling worker's live cache.
+    """
+    redis = get_redis()
+    try:
+        async for key in redis.scan_iter(f"{CACHE_PREFIX}*"):
+            await redis.delete(key)
+    except Exception:
+        pass  # keys expire on their own
     finally:
         await redis.aclose()

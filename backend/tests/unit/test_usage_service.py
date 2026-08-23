@@ -1,5 +1,6 @@
 """Unit tests for the usage-aggregation service (radacct -> per-subscriber octets)."""
 
+import os
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -213,7 +214,10 @@ async def test_cached_value_written_to_redis_with_ttl(session):
 
     redis = get_redis()
     try:
-        keys = [key async for key in redis.scan_iter("usage:*:bob")]
+        # Scoped to this worker's prefix: under pytest-xdist a sibling worker
+        # may expire its own bob key mid-test, so a cross-worker scan + TTL
+        # check is inherently racy.
+        keys = [key async for key in redis.scan_iter(f"{usage_service.CACHE_PREFIX}*bob")]
         assert keys, "expected a cached usage key for bob"
         ttl = await redis.ttl(keys[0])
         assert 0 < ttl <= usage_service.CACHE_TTL_SECONDS
@@ -323,14 +327,27 @@ async def test_usage_report_excludes_unplanned_subscribers(session):
     assert [r.username for r in rows] == ["has-plan"]
 
 
+def test_cache_prefix_is_worker_scoped() -> None:
+    """The cache prefix (and therefore the per-test clear) is worker-scoped.
+
+    Under pytest-xdist the workers share one Redis but run separate databases,
+    so a global namespace would let one worker read or wipe another's live
+    cache mid-test (the flake this guards against).
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "")
+    assert usage_service.CACHE_PREFIX == (f"usage:{worker}:" if worker else "usage:")
+
+
 async def test_clear_usage_cache_removes_keys(session):
+    # Scoped to this worker's CACHE_PREFIX: under pytest-xdist the workers
+    # share one Redis, so other workers' usage:* keys legitimately exist here.
     await _seed_session(session, in_octets=10)
     await session.commit()
     await usage_service.get_subscriber_usage(session, "bob", start=WINDOW_START, end=WINDOW_END)
 
     redis = get_redis()
     try:
-        before = [k async for k in redis.scan_iter("usage:*")]
+        before = [k async for k in redis.scan_iter(f"{usage_service.CACHE_PREFIX}*")]
         assert before
     finally:
         await redis.aclose()
@@ -339,7 +356,7 @@ async def test_clear_usage_cache_removes_keys(session):
 
     redis = get_redis()
     try:
-        after = [k async for k in redis.scan_iter("usage:*")]
+        after = [k async for k in redis.scan_iter(f"{usage_service.CACHE_PREFIX}*")]
     finally:
         await redis.aclose()
     assert after == []
