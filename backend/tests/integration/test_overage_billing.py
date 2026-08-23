@@ -114,9 +114,7 @@ async def test_overage_generate_endpoint_bills_excess_usage(client, session):
     assert resp.status_code == 200, resp.text
     assert resp.json()["created"] == 1
 
-    listed = await client.get(
-        f"/api/v1/invoices?subscriber_id={sub['id']}", headers=_auth(token)
-    )
+    listed = await client.get(f"/api/v1/invoices?subscriber_id={sub['id']}", headers=_auth(token))
     assert listed.status_code == 200
     items = listed.json()["items"]
     assert len(items) == 1

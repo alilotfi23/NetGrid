@@ -30,9 +30,7 @@ limiter = Limiter(
     storage_uri=get_settings().redis_url,
     headers_enabled=True,
     key_prefix="netgrid-rl",
-    storage_options={
-        "key_prefix": f"netgrid-rl-{_worker}" if _worker else "netgrid-rl"
-    },
+    storage_options={"key_prefix": f"netgrid-rl-{_worker}" if _worker else "netgrid-rl"},
 )
 
 LIMITS = {

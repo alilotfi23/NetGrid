@@ -153,12 +153,14 @@ async def test_idempotent_second_run(session):
     _seed_session(session, "heavy", in_octets=150 * 1024**3, start=JULY_15)
     await session.commit()
 
-    assert await generate_overage_invoices(
-        session, period_start=PERIOD_START, period_end=PERIOD_END
-    ) == 1
-    assert await generate_overage_invoices(
-        session, period_start=PERIOD_START, period_end=PERIOD_END
-    ) == 0
+    assert (
+        await generate_overage_invoices(session, period_start=PERIOD_START, period_end=PERIOD_END)
+        == 1
+    )
+    assert (
+        await generate_overage_invoices(session, period_start=PERIOD_START, period_end=PERIOD_END)
+        == 0
+    )
     assert len(await _invoices(session)) == 1
 
 
@@ -215,8 +217,10 @@ async def test_audit_entry_when_actor_provided(session):
         session, period_start=PERIOD_START, period_end=PERIOD_END, actor_id=admin.id
     )
     (entry,) = (
-        await session.execute(select(AuditLog).where(AuditLog.action == "overage"))
-    ).scalars().all()
+        (await session.execute(select(AuditLog).where(AuditLog.action == "overage")))
+        .scalars()
+        .all()
+    )
     assert entry.admin_id == admin.id
     assert entry.resource == "invoices"
     assert entry.metadata_ == {
