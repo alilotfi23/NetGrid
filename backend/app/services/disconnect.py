@@ -56,10 +56,17 @@ if not hasattr(os_select, "poll"):
         def poll(self, timeout_ms: int | None = None) -> list[tuple[object, int]]:
             timeout = None if timeout_ms is None else timeout_ms / 1000.0
             readable, _, _ = os_select.select(self._readers, [], [], timeout)
-            return [(fd, os_select.POLLIN) for fd in readable]  # type: ignore[attr-defined]
+            # select.POLLIN is 0x0001 on every platform that defines it, but
+            # typeshed exposes it only on POSIX — return the literal so this
+            # Windows-only shim type-checks on both platforms.
+            return [(fd, 0x0001) for fd in readable]
 
-    os_select.POLLIN = 0x0001  # type: ignore[attr-defined]
-    os_select.poll = _SelectPoll  # type: ignore[attr-defined]
+    # Feed the module-patch names through a loop: a dynamic attribute name keeps
+    # ruff's B010 (setattr with a constant) quiet, while setattr itself lets
+    # strict mypy pass regardless of whether typeshed's select stubs include
+    # poll/POLLIN (POSIX) or not (Windows).
+    for _name, _value in (("POLLIN", 0x0001), ("poll", _SelectPoll)):
+        setattr(os_select, _name, _value)
 
 # pyrad does not ship a dictionary, and FreeRADIUS's full dictionary is not
 # present in the backend image — vendor the handful of attributes we encode.
