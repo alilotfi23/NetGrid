@@ -9,8 +9,8 @@ a port of its PHP/Smarty code.
 **Stack:** FastAPI (async SQLAlchemy 2.0 + asyncpg) · Next.js (App Router + shadcn/ui) ·
 PostgreSQL · FreeRADIUS (`rlm_sql_postgresql`) · Redis · Docker Compose
 
-> Architecture decisions, pinned conventions, and the build-phase checklist live in
-> [`CLAUDE.md`](./CLAUDE.md). This README is the human-facing overview + quickstart.
+> Setup, conventions, and the PR process live in [`CONTRIBUTING.md`](./CONTRIBUTING.md);
+> this README is the human-facing overview + quickstart.
 
 <!-- Fill in the GitHub owner/repo when the project gets a remote (git remote add origin …);
      the badge shows the CI workflow's check state on main. -->
@@ -71,11 +71,9 @@ to the NAS. `radacct` is owned by FreeRADIUS: the app only ever reads it.
 /frontend        Next.js dashboard (App Router) + Vitest/RTL tests
 /freeradius      FreeRADIUS Docker image + raddb overrides (sql module, lockout policy)
 /docker          Compose helpers: sim-nas container, MikroTik autorun script
-/scripts         smoke_e2e.sh, seed_dev.py lives in backend/scripts
-/docs            Design spec + implementation plans (docs/superpowers)
+/scripts         smoke_e2e.sh, MikroTik setup; seed_dev.py lives in backend/scripts
 docker-compose.yml
 .env.example     Every env var the app needs, with placeholders
-CLAUDE.md        Architecture decisions, conventions, build phases
 CONTRIBUTING.md  How to set up a dev environment, conventions, and PR process
 ```
 
@@ -146,23 +144,24 @@ docker compose down -v       # also wipe the database
 
 ## Try the demo
 
-Once the stack is up, [`docs/demo.md`](./docs/demo.md) is a copy-pasteable walkthrough
-of the seeded demo dataset that proves every layer of the data-cap lifecycle with real
-data — from a NAS authenticating against FreeRADIUS to a per-GB overage surcharge
-invoice and a CoA session disconnect. Each section ends with cleanup steps, so nothing
-is left behind:
-
-1. [Start the stack and seed the demo data](./docs/demo.md#1-start-the-stack-and-seed-the-demo-data)
-2. [RADIUS auth, end to end (sim-nas)](./docs/demo.md#2-radius-auth-end-to-end-sim-nas)
-3. [Tour the dashboard](./docs/demo.md#3-tour-the-dashboard)
-4. [The usage read path](./docs/demo.md#4-the-usage-read-path)
-5. [Overage surcharge, end to end](./docs/demo.md#5-overage-surcharge-end-to-end-) — 30 GiB over a 200 GB quota becomes a $15.00 `overage` invoice
-6. [Quota enforcement (CoA disconnect)](./docs/demo.md#6-quota-enforcement-coa-disconnect) — an over-quota session gets a real Disconnect-ACK
+Seed a realistic demo dataset (plans, NAS devices, subscribers, 12 months of
+invoices/payments, live sessions — idempotent, safe to re-run), then walk the whole
+data-cap lifecycle with real data:
 
 ```bash
 cd backend && python scripts/seed_dev.py     # one command, idempotent
 python scripts/setup-mikrotik-nas.py         # register sim-nas + seed demo-user
 ```
+
+- **RADIUS auth, end to end** — the sim-nas container sends periodic Access-Requests to
+  FreeRADIUS; watch `docker compose logs -f sim-nas` for Access-Accept / Access-Reject.
+- **Usage + overage surcharge** — the dashboard shows per-subscriber usage vs quota;
+  usage beyond an enforcement-enabled plan's quota bills a per-GB `overage` invoice.
+- **Quota enforcement (CoA)** — an over-quota live session gets a real RFC 5176
+  Disconnect-ACK back from sim-nas (the full disconnect loop, no mocks).
+- **Self-cleaning smoke scripts** verify the API end to end against a migrated database:
+  `backend/scripts/smoke_invoices.sh`, `smoke_subscribers_plans.sh`, `smoke_sessions.sh`
+  (and `scripts/smoke_e2e.sh` runs the full stack, nightly in CI).
 
 ## Services
 
@@ -238,7 +237,7 @@ ruff format --check app tests
 mypy app                     # strict mode
 ```
 
-**400 backend tests** (unit + integration) and **306 frontend tests** (Vitest/RTL) pass at
+**398 backend tests** (unit + integration) and **306 frontend tests** (Vitest/RTL) pass at
 HEAD. There is also a scripted RADIUS suite under `backend/tests/radius`
 (`radtest`/`radclient` against a test FreeRADIUS instance, including the failed-auth
 lockout policy).
@@ -279,12 +278,32 @@ scrollable tables/charts pan inside their own cards, plus a dashboard pixel-diff
 persisted between nightlies), the RADIUS integration suite, and `next build`. Nightly
 failures auto-open a `nightly-failure` GitHub issue that closes itself on the next green run.
 
+The **release** workflow (`.github/workflows/release.yml`) runs on every push to `main` —
+see [Releases](#releases) below.
+
+## Releases
+
+Every push to `main` runs the release workflow, which derives the next version from
+commit history using [semantic-release](https://semantic-release.gitbook.io/) and the
+[Conventional Commits](https://www.conventionalcommits.org/) rules the repo already
+follows:
+
+| Commit type | Version bump |
+|---|---|
+| `fix:` / `perf:` | patch (`0.0.x`) |
+| `feat:` | minor (`0.x.0`) |
+| `BREAKING CHANGE:` footer (or `!` in the type, e.g. `feat!:`)| major (`x.0.0`) |
+| `docs:` / `chore:` / `refactor:` / `test:` / `style:` | no release |
+
+A successful run appends the new entries to [`CHANGELOG.md`](./CHANGELOG.md), commits
+that file, and publishes a GitHub release tagged with the version. There is no npm or
+Docker image publishing — NetGrid ships via Docker Compose, so a release is a tag +
+changelog. To cut a release, just merge conventional commits to `main`.
+
 ## Docs
 
-- `CLAUDE.md` — architecture, pinned decisions, RBAC/rate-limiting design, build phases
-- `docs/demo.md` — the end-to-end demo walkthrough (linked from **Try the demo** above)
-- `docs/` — design spec and task-by-task implementation plans
 - `CONTRIBUTING.md` — setting up a dev environment, conventions, testing, and the PR process
+- `README.md` — this overview + quickstart
 
 ## Status
 
@@ -293,4 +312,5 @@ failures auto-open a `nightly-failure` GitHub issue that closes itself on the ne
 CoA, billing, FreeRADIUS abuse protection, the frontend dashboard, and CI — plus the
 data-cap lifecycle milestone (usage aggregation, usage report + dashboard card,
 per-subscriber usage history, over-quota enforcement, and overage surcharge billing).
-See the **Build Phases** checklist in `CLAUDE.md` for the authoritative state.
+Every phase and the milestone are covered by the backend and frontend test suites.
+Releases are cut automatically from Conventional Commits (see [Releases](#releases)).

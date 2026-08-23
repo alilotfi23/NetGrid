@@ -1,0 +1,35 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # push CHANGELOG.md + create the GitHub release/tag
+
+jobs:
+  release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so semantic-release can analyze every commit since the
+          # last tag, not just the shallow HEAD.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # @semantic-release/git@11 needs Node >= 22.22.2; keep in sync with the
+      # frontend CI's Node 22 line.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+
+      # No root package.json — the CLI and the changelog/git plugins are fetched
+      # on the fly. commit-analyzer / release-notes-generator / github are
+      # bundled with semantic-release itself.
+      - name: Semantic Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --yes -p semantic-release@25 -p @semantic-release/changelog@7 -p @semantic-release/git@11 semantic-release

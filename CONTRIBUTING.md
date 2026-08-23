@@ -80,6 +80,8 @@ The bootstrap admin is `superadmin` / `netgrid-admin` (change it after first log
   ```
 
   Explain *why* when the reason isn't obvious — the diff already shows *what*.
+  The type also drives the automated versioning: `fix:` bumps the patch, `feat:` the
+  minor, and a `BREAKING CHANGE:` footer the major (see **Releases** in the README).
 
 - **Commit early and often**, not one giant commit at the end. A feature commit includes
   its tests and migration in the same commit.
@@ -88,7 +90,8 @@ The bootstrap admin is `superadmin` / `netgrid-admin` (change it after first log
 
 ## Project conventions (the short version)
 
-The authoritative source is [`CLAUDE.md`](./CLAUDE.md) — read it before touching code.
+These are pinned decisions recorded as the project evolved — treat them as
+authoritative unless an issue agrees to change one (see *Architecture decisions* below).
 The non-negotiables:
 
 - **Layering**: routers are thin (parse/validate → call services); all DB access lives in
@@ -185,9 +188,9 @@ lockout policy) and runs as a separate, slower CI job.
 - **Bugs**: include what you did, what you expected, what happened, and (if relevant)
   the backend or frontend logs. A failing test or a reproduction script is gold.
 - **Features**: describe the problem you're solving, not just the solution. Check the
-  open issues and `CLAUDE.md`'s build-phase checklist first — we deliberately keep scope
-  tight, and some ideas conflict with pinned architecture decisions (e.g. no RPC bridge
-  to FreeRADIUS, no Celery).
+  open issues and the pinned architecture decisions below first — we deliberately keep
+  scope tight, and some ideas conflict with them (e.g. no RPC bridge to FreeRADIUS, no
+  Celery).
 
 ## Architecture decisions — don't change these without discussion
 
