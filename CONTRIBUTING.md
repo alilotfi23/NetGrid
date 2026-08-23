@@ -39,7 +39,14 @@ cd .. && docker compose up -d postgres redis
 # 5. Backend env
 cd backend
 cp .env.example .env               # adjust DATABASE_URL / REDIS_URL if you changed ports
+
+# 6. Git hooks (ruff gates run on commit/push)
+cd .. && ./scripts/install-git-hooks.sh
 ```
+
+Git hooks live in `.git/hooks/`, which is not version-controlled, so they are committed
+under `scripts/git-hooks/` and copied into place by `scripts/install-git-hooks.sh`.
+Re-run the installer after pulling updates to the hooks (it is idempotent).
 
 ### Verify the setup
 
@@ -126,6 +133,11 @@ npm run typecheck          # tsc --noEmit
 npm run lint               # eslint
 npx vitest run             # unit + component tests
 ```
+
+The git hooks (installed via `scripts/install-git-hooks.sh`) run the ruff gates
+locally so CI never has to: `pre-commit` checks `ruff format` on staged Python files,
+and `pre-push` runs `ruff format --check` + `ruff check` on the whole tree (the CI
+backend gate). Escape hatches: `git commit --no-verify` / `git push --no-verify`.
 
 For layout-affecting changes, also run the viewport audit (headless Chrome over every
 page at 375px and 1440px, asserting no overflow and that tables/charts scroll inside

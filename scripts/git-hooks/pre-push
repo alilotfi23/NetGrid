@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# pre-push — run the CI backend gates before anything leaves the machine.
+#
+# Mirrors the CI `backend` job's ruff steps against the whole tree:
+#   ruff format --check app tests
+#   ruff check app tests
+#
+# (mypy is left out so pushes stay snappy; it runs in CI.)
+#
+# Skip with `git push --no-verify` if you really must.
+#
+# Installed via scripts/install-git-hooks.sh (git hooks live outside the
+# repo, so they can't be committed directly — this script copies them into
+# .git/hooks/).
+
+set -u
+
+ROOT="$(git rev-parse --show-toplevel)" || exit 1
+cd "$ROOT" || exit 1
+
+# Locate ruff: prefer the backend venv (matches the pinned dev toolchain),
+# fall back to whatever is on PATH.
+RUFF=""
+for candidate in \
+    "backend/.venv/bin/ruff" \
+    "backend/.venv/Scripts/ruff.exe" \
+    "backend/.venv/bin/python" \
+    "backend/.venv/Scripts/python.exe"; do
+    if [ -x "$candidate" ]; then
+        case "$(basename "$candidate" )" in
+            python | python.exe) RUFF="$candidate -m ruff" ;;  # venv python, invoke via -m
+            *) RUFF="$candidate" ;;                            # ruff binary, use directly
+        esac
+        break
+    fi
+done
+if [ -z "$RUFF" ] && command -v ruff >/dev/null 2>&1; then
+    RUFF="ruff"
+fi
+if [ -z "$RUFF" ]; then
+    echo "pre-push: ruff not found (looked in backend/.venv and PATH)." >&2
+    echo "pre-push: install the dev toolchain (see CONTRIBUTING.md) or push with --no-verify." >&2
+    exit 1
+fi
+
+# The pre-push hook receives the remote name/URL as $1/$2 (not ref ranges),
+# so there is no cheap local base to diff against — just run the full tree
+# gate, exactly like CI. It takes a couple of seconds.
+echo "pre-push: ruff format --check + ruff check (backend gate)"
+# The CI job runs these from backend/, so resolve the paths from the repo
+# root (app/ and tests/ live under backend/).
+# shellcheck disable=SC2086  # RUFF may be "python -m ruff"
+$RUFF format --check backend/app backend/tests || {
+    echo "pre-push: run 'ruff format' on the files above, or 'git push --no-verify' to skip." >&2
+    exit 1
+}
+# shellcheck disable=SC2086
+$RUFF check backend/app backend/tests || {
+    echo "pre-push: fix the lint errors above, or 'git push --no-verify' to skip." >&2
+    exit 1
+}
+echo "pre-push: backend checks clean"

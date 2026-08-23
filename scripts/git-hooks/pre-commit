@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+#
+# pre-commit — run ruff format --check on staged Python files.
+#
+# The CI gate (`ruff format --check app tests`) only catches unformatted
+# files after a push; this hook catches them before the commit is even
+# created. It checks only the files being committed, so it stays fast.
+#
+# Skip with `git commit --no-verify` if you really must.
+#
+# Installed via scripts/install-git-hooks.sh (git hooks live outside the
+# repo, so they can't be committed directly — this script copies them into
+# .git/hooks/).
+
+set -u
+
+ROOT="$(git rev-parse --show-toplevel)" || exit 1
+cd "$ROOT" || exit 1
+
+# Locate ruff: prefer the backend venv (matches the pinned dev toolchain),
+# fall back to whatever is on PATH.
+RUFF=""
+for candidate in \
+    "backend/.venv/bin/ruff" \
+    "backend/.venv/Scripts/ruff.exe" \
+    "backend/.venv/bin/python" \
+    "backend/.venv/Scripts/python.exe"; do
+    if [ -x "$candidate" ]; then
+        case "$(basename "$candidate")" in
+            python | python.exe) RUFF="$candidate -m ruff" ;;  # venv python, invoke via -m
+            *) RUFF="$candidate" ;;                            # ruff binary, use directly
+        esac
+        break
+    fi
+done
+if [ -z "$RUFF" ] && command -v ruff >/dev/null 2>&1; then
+    RUFF="ruff"
+fi
+if [ -z "$RUFF" ]; then
+    echo "pre-commit: ruff not found (looked in backend/.venv and PATH)." >&2
+    echo "pre-commit: install the dev toolchain (see CONTRIBUTING.md) or commit with --no-verify." >&2
+    exit 1
+fi
+
+# Only Python files that are being added/modified/copied count.
+mapfile -t FILES < <(git diff --cached --name-only --diff-filter=ACM -- "*.py")
+if [ "${#FILES[@]}" -eq 0 ]; then
+    exit 0
+fi
+
+echo "pre-commit: ruff format --check on ${#FILES[@]} staged Python file(s)"
+# shellcheck disable=SC2086  # RUFF may be "python -m ruff"
+$RUFF format --check "${FILES[@]}"
+STATUS=$?
+
+if [ $STATUS -ne 0 ]; then
+    echo "pre-commit: run 'ruff format' on the files above, or 'git commit --no-verify' to skip." >&2
+fi
+exit $STATUS
